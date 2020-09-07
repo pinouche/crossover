@@ -255,7 +255,7 @@ def add_noise_to_fittest(network_one, network_two, information_nn_one, informati
     return list_weights
 
 
-def low_corr_neurons(network_one, network_two, corr_matrices_list, information_nn_one, information_nn_two,
+def corr_neurons(network_one, network_two, corr_matrices_list, information_nn_one, information_nn_two,
                      seed, index, crossover, threshold):
 
     # choose best parent
@@ -283,12 +283,15 @@ def low_corr_neurons(network_one, network_two, corr_matrices_list, information_n
             max_corr_list.append(np.max(list_corr))
 
         quantile = np.quantile(max_corr_list, threshold)
-        mask_array = np.asarray(max_corr_list) >= quantile
+
+        if crossover == "noise_low_corr":
+            mask_array = np.asarray(max_corr_list) >= quantile
+        elif crossover == "noise_high_corr":
+            mask_array = np.asarray(max_corr_list) < quantile
 
         mask_list.append(mask_array)
 
-    if crossover == "noise_low_corr":
-        mask_list = [[not element for element in sublist] for sublist in mask_list]
-        list_weights = apply_mask_and_add_noise(best_parent, mask_list, seed)
+    mask_list = [[not element for element in sublist] for sublist in mask_list]
+    list_weights = apply_mask_and_add_noise(best_parent, mask_list, seed)
 
-        return list_weights
+    return list_weights

@@ -52,7 +52,7 @@ def model_keras(seed, data, weights_hidden_size=None):
             keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
                                kernel_initializer=initializer),
             # output layer
-            keras.layers.Dense(output_size, activation=keras.activations.selu, use_bias=False,
+            keras.layers.Dense(output_size, activation=keras.activations.softmax, use_bias=False,
                                kernel_initializer=initializer)
         ])
 
