@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from sklearn.preprocessing import StandardScaler
 import pickle
 import keras
 
@@ -37,19 +36,6 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def selu(x, lamb=1.0507, alpha=1.67326):
-    x[x > 0] = x[x > 0] * lamb
-    x[x <= 0] = lamb * (alpha * np.exp(x[x <= 0]) - alpha)
-
-    return x
-
-
-def softmax(x):
-    e_x = np.exp(x - np.max(x))
-
-    return e_x / e_x.sum()
-
-
 def add_noise(parent_weights, t, seed):
     np.random.seed(seed)
 
@@ -78,6 +64,23 @@ def get_hidden_layers(model, data_x):
     return hidden_layers_list
 
 
+def get_gradients_hidden_layers(model, data_x):
+    hidden_layers_list = [layer.output for layer in model.layers[:-2]]
+    inputs = model.inputs[0]
+    output = model.layers[-2].output
+
+    gradients = keras.backend.gradients(output, hidden_layers_list)
+    get_gradients = keras.backend.function(inputs, gradients)
+
+    p = data_x.shape[1]
+
+    gradient_list = []
+    for index in range(data_x.shape[0]):
+        gradient_list.append(get_gradients([data_x[index, :].reshape(1, p)]))
+
+    return gradient_list
+
+
 def get_corr(hidden_representation_list_one, hidden_representation_list_two):
     list_corr_matrices = []
 
@@ -86,9 +89,6 @@ def get_corr(hidden_representation_list_one, hidden_representation_list_two):
         hidden_representation_two = hidden_representation_list_two[index]
 
         n = hidden_representation_one.shape[1]
-        scaler = StandardScaler()  # Fit your data on the scaler object
-        hidden_representation_one = scaler.fit_transform(hidden_representation_one)
-        hidden_representation_two = scaler.fit_transform(hidden_representation_two)
 
         corr_matrix_nn = np.empty((n, n))
 

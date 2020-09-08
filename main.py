@@ -9,6 +9,7 @@ import pickle
 from keras.models import load_model
 import keras
 
+from utils import get_gradients_hidden_layers
 from utils import get_hidden_layers
 from utils import get_corr
 from utils import crossover_method
@@ -87,8 +88,10 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         print("crossover method: " + crossover)
         list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
-        list_hidden_representation_one = get_hidden_layers(parent_one, x_test)
-        list_hidden_representation_two = get_hidden_layers(parent_two, x_test)
+        list_hidden_representation_one = get_hidden_layers(parent_one, x_test)  # activation vector network one
+        list_hidden_representation_two = get_hidden_layers(parent_two, x_test)  # activation vector network two
+        #list_gradient_hidden_layers_one = get_gradients_hidden_layers(parent_one, x_test)  # gradient activation vector network one
+        #list_gradient_hidden_layers_two = get_gradients_hidden_layers(parent_two, x_test)  # gradient activation vector network two
         list_corr_matrices = get_corr(list_hidden_representation_one, list_hidden_representation_two)
 
         if crossover in ["safe", "unsafe", "orthogonal", "normed", "naive"]:
@@ -98,15 +101,15 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         print("seven")
         if crossover in ["noise_0.5", "noise_0.1"]:
             weights_crossover = add_noise_to_fittest(list_ordered_weights_one, list_ordered_weights_two,
-                                                    model_information_parent_one, model_information_parent_two,
-                                                    crossover,
-                                                    pair_id, best_epoch_parent_one)
+                                                     model_information_parent_one, model_information_parent_two,
+                                                     crossover,
+                                                     pair_id, best_epoch_parent_one)
 
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
             weights_crossover = corr_neurons(list_ordered_weights_one, list_ordered_weights_two,
-                                                     list_corr_matrices, model_information_parent_one,
-                                                     model_information_parent_two, pair_id, best_epoch_parent_one,
-                                                     crossover, quantile)
+                                             list_corr_matrices, model_information_parent_one,
+                                             model_information_parent_two, pair_id, best_epoch_parent_one,
+                                             crossover, quantile)
         else:
             weights_crossover = arithmetic_crossover(list_ordered_weights_one, list_ordered_weights_two)
 
@@ -126,7 +129,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             similarity_list[count].append(parents_similarity)
 
         keras.backend.clear_session()
-    count += 1
+        count += 1
 
     if parallel == "process":
         data_struc[str(work_id) + "_performance"] = result_list
