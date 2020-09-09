@@ -35,22 +35,22 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # y_train = y_train[shuffle_list]
 
     num_pairs = len(pair_list)
-    pair_id = work_id
 
-    print("FOR PAIR NUMBER " + str(pair_id + 1))
+    print("FOR PAIR NUMBER " + str(work_id + 1))
 
     # crossover_types = ["safe", "unsafe", "orthogonal", "normed", "naive", "noise_0.5", "noise_0.1",
     # "noise_low_corr", "noise_high_corr"]
-    crossover_types = ["noise_0.5", "unsafe", "noise_low_corr", "noise_high_corr"]
+    crossover_types = ["unsafe", "noise_low_corr", "noise_high_corr"]
 
+    vector_representation = "gradient"  # "gradient" or "activation"
     result_list = [[] for _ in range(len(crossover_types)+1)]
     similarity_list = [[] for _ in range(len(crossover_types))]
     quantile = 0.5
     total_training_epoch = 25
-    epoch_list = np.arange(0, total_training_epoch+1, 5)
+    epoch_list = [20]
 
-    model_one = model_keras(pair_id, data)
-    model_two = model_keras(pair_id + num_pairs, data)
+    model_one = model_keras(work_id, data)
+    model_two = model_keras(work_id + num_pairs, data)
     model_one.save("parent_one_initial")
     model_two.save("parent_two_initial")
 
@@ -77,21 +77,27 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         best_epoch_parent_one = np.argmin(model_information_parent_one.history["val_loss"])
         best_epoch_parent_one = np.argmin([np.abs(best_epoch_parent_one - epoch_num) for epoch_num in epoch_list])
         best_epoch_parent_one = epoch_list[best_epoch_parent_one]
+        best_epoch_parent_one = 20
         parent_one = load_model("model_parent_one_epoch_" + str(best_epoch_parent_one) + ".hd5")
         weights_nn_one = parent_one.get_weights()
 
         best_epoch_parent_two = np.argmin(model_information_parent_two.history["val_loss"])
         best_epoch_parent_two = np.argmin([np.abs(best_epoch_parent_two - epoch_num) for epoch_num in epoch_list])
         best_epoch_parent_two = epoch_list[best_epoch_parent_two]
+        best_epoch_parent_one = 20
         parent_two = load_model("model_parent_two_epoch_" + str(best_epoch_parent_two) + ".hd5")
         weights_nn_two = parent_two.get_weights()
 
         print("crossover method: " + crossover)
         list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
-        list_hidden_representation_one = get_hidden_layers(parent_one, x_test)  # activation vector network one
-        list_hidden_representation_two = get_hidden_layers(parent_two, x_test)  # activation vector network two
-        #list_gradient_hidden_layers_one = get_gradients_hidden_layers(parent_one, x_test)  # gradient activation vector network one
-        #list_gradient_hidden_layers_two = get_gradients_hidden_layers(parent_two, x_test)  # gradient activation vector network two
+
+        if vector_representation == "activation":
+            list_hidden_representation_one = get_hidden_layers(parent_one, x_test)  # activation vector network one
+            list_hidden_representation_two = get_hidden_layers(parent_two, x_test)  # activation vector network two
+        elif vector_representation == "gradient":
+            list_hidden_representation_one = get_gradients_hidden_layers(parent_one, x_test, y_test)  # gradient vector
+            list_hidden_representation_two = get_gradients_hidden_layers(parent_two, x_test, y_test)  # gradient vector
+
         list_corr_matrices = get_corr(list_hidden_representation_one, list_hidden_representation_two)
 
         if crossover in ["safe", "unsafe", "orthogonal", "normed", "naive"]:
@@ -103,12 +109,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             weights_crossover = add_noise_to_fittest(list_ordered_weights_one, list_ordered_weights_two,
                                                      model_information_parent_one, model_information_parent_two,
                                                      crossover,
-                                                     pair_id, best_epoch_parent_one)
+                                                     work_id, best_epoch_parent_one)
 
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
             weights_crossover = corr_neurons(list_ordered_weights_one, list_ordered_weights_two,
                                              list_corr_matrices, model_information_parent_one,
-                                             model_information_parent_two, pair_id, best_epoch_parent_one,
+                                             model_information_parent_two, work_id, best_epoch_parent_one,
                                              crossover, quantile)
         else:
             weights_crossover = arithmetic_crossover(list_ordered_weights_one, list_ordered_weights_two)

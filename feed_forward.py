@@ -27,8 +27,10 @@ def model_keras(seed, data, weights_hidden_size=None):
             keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
                                kernel_initializer=initializer, input_shape=(input_size,)),
             # output layer
-            keras.layers.Dense(output_size, activation=keras.activations.softmax, use_bias=False,
-                               kernel_initializer=initializer)
+            keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
+                               kernel_initializer=initializer),
+
+            keras.layers.Activation(keras.activations.softmax)
         ])
 
     elif data == "cifar10":
@@ -52,8 +54,10 @@ def model_keras(seed, data, weights_hidden_size=None):
             keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
                                kernel_initializer=initializer),
             # output layer
-            keras.layers.Dense(output_size, activation=keras.activations.softmax, use_bias=False,
-                               kernel_initializer=initializer)
+            keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
+                               kernel_initializer=initializer),
+
+            keras.layers.Activation(keras.activations.softmax)
         ])
 
     else:
