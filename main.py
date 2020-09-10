@@ -11,6 +11,7 @@ import keras
 
 from utils import get_gradients_hidden_layers
 from utils import get_hidden_layers
+from utils import get_gradient_weights
 from utils import get_corr
 from utils import crossover_method
 from utils import arithmetic_crossover
@@ -38,13 +39,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     print("FOR PAIR NUMBER " + str(work_id + 1))
 
-    # crossover_types = ["safe", "unsafe", "orthogonal", "normed", "naive", "noise_0.5", "noise_0.1",
-    # "noise_low_corr", "noise_high_corr"]
-    crossover_types = ["unsafe", "noise_low_corr", "noise_high_corr"]
+    # crossover_types = ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
+    # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation", "unsafe_mutation"]
+    crossover_types = ["safe_mutation"]
 
     vector_representation = "gradient"  # "gradient" or "activation"
     result_list = [[] for _ in range(len(crossover_types)+1)]
-    similarity_list = [[] for _ in range(len(crossover_types))]
     quantile = 0.5
     total_training_epoch = 25
     epoch_list = [20]
@@ -66,10 +66,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                  validation_data=(x_test, y_test), callbacks=[save_callback])
     print("three")
 
-    accuracy_best_parent = model_information_parent_one.history["val_loss"]
-    if np.max(accuracy_best_parent) < np.max(model_information_parent_two.history["val_loss"]):
-        accuracy_best_parent = model_information_parent_two.history["val_loss"]
-
     count = 0
     for crossover in crossover_types:
 
@@ -77,16 +73,20 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         best_epoch_parent_one = np.argmin(model_information_parent_one.history["val_loss"])
         best_epoch_parent_one = np.argmin([np.abs(best_epoch_parent_one - epoch_num) for epoch_num in epoch_list])
         best_epoch_parent_one = epoch_list[best_epoch_parent_one]
-        best_epoch_parent_one = 20
         parent_one = load_model("model_parent_one_epoch_" + str(best_epoch_parent_one) + ".hd5")
         weights_nn_one = parent_one.get_weights()
 
         best_epoch_parent_two = np.argmin(model_information_parent_two.history["val_loss"])
         best_epoch_parent_two = np.argmin([np.abs(best_epoch_parent_two - epoch_num) for epoch_num in epoch_list])
         best_epoch_parent_two = epoch_list[best_epoch_parent_two]
-        best_epoch_parent_one = 20
         parent_two = load_model("model_parent_two_epoch_" + str(best_epoch_parent_two) + ".hd5")
         weights_nn_two = parent_two.get_weights()
+
+        fittest_weights, fittest_model = weights_nn_one, parent_one
+        loss_best_parent = model_information_parent_one.history["val_loss"]
+        if np.min(loss_best_parent) > np.max(model_information_parent_two.history["val_loss"]):
+            loss_best_parent = model_information_parent_two.history["val_loss"]
+            fittest_weights, fittest_model = weights_nn_two, parent_two
 
         print("crossover method: " + crossover)
         list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
@@ -100,16 +100,17 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         list_corr_matrices = get_corr(list_hidden_representation_one, list_hidden_representation_two)
 
-        if crossover in ["safe", "unsafe", "orthogonal", "normed", "naive"]:
+        if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover", "naive_crossover"]:
             list_ordered_weights_one, list_ordered_weights_two, parents_similarity = crossover_method(
                 list_ordered_weights_one, list_ordered_weights_two, list_corr_matrices, crossover)
 
-        print("seven")
         if crossover in ["noise_0.5", "noise_0.1"]:
-            weights_crossover = add_noise_to_fittest(list_ordered_weights_one, list_ordered_weights_two,
-                                                     model_information_parent_one, model_information_parent_two,
-                                                     crossover,
-                                                     work_id, best_epoch_parent_one)
+            weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id)
+
+        elif crossover in ["safe_mutation", "unsafe_mutation"]:
+            sensitivity_gradient_vector = get_gradient_weights(parent_two, x_test)
+            weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id, sensitivity_gradient_vector,
+                                                     True)
 
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
             weights_crossover = corr_neurons(list_ordered_weights_one, list_ordered_weights_two,
@@ -128,18 +129,14 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                           verbose=False, validation_data=(x_test, y_test))
 
         if count == 0:
-            result_list[count].append(accuracy_best_parent)
+            result_list[count].append(loss_best_parent)
         result_list[count+1].append(model_information_offspring.history["val_loss"])
-
-        if crossover not in ["noise_0.5", "noise_0.1", "noise_low_corr"]:
-            similarity_list[count].append(parents_similarity)
 
         keras.backend.clear_session()
         count += 1
 
     if parallel == "process":
         data_struc[str(work_id) + "_performance"] = result_list
-        #data_struc[str(work_id) + "_similarity"] = similarity_list
     elif parallel == "thread":
         data_struc.put(result_list)
 

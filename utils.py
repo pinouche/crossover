@@ -36,13 +36,21 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def add_noise(parent_weights, t, seed):
+def add_noise(parent_weights, seed, t=0.5, sensitivity_gradient_vector=None, scaling_mutation_method=False):
+
+    mutation_scaling = 1
+    if scaling_mutation_method == "safe_mutation":
+        mutation_scaling = 1/sensitivity_gradient_vector
+    elif scaling_mutation_method == "unsafe_mutation":
+        mutation_scaling = sensitivity_gradient_vector
+
     np.random.seed(seed)
 
     scale_factor = np.sqrt(1 / (np.power(t, 2) + np.power(1 - t, 2)))
     mean_parent, std_parent = 0.0, np.std(parent_weights)
 
     weight_noise = np.random.normal(loc=mean_parent, scale=std_parent, size=parent_weights.shape)
+    weight_noise = weight_noise*mutation_scaling
     parent_weights = (t * parent_weights + (1 - t) * weight_noise) * scale_factor
 
     return parent_weights
@@ -118,20 +126,20 @@ def get_corr(hidden_representation_list_one, hidden_representation_list_two):
 
 
 # cross correlation function for both bipartite matching (hungarian method)
-def bipartite_matching(corr_matrix_nn, crossover="unsafe"):
-    if crossover == "unsafe":
+def bipartite_matching(corr_matrix_nn, crossover="unsafe_crossover"):
+    if crossover == "unsafe_crossover":
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)  # Hungarian method
-    elif crossover == "safe":
+    elif crossover == "safe_crossover":
         corr_matrix_nn *= -1  # default of linear_sum_assignement is to minimize cost, we want to max "cost"
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)  # Hungarian method
-    elif crossover == "orthogonal":
+    elif crossover == "orthogonal_crossover":
         corr_matrix_nn = np.abs(corr_matrix_nn)
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)  # Hungarian method
-    elif crossover == "normed":
+    elif crossover == "normed_crossover":
         corr_matrix_nn = np.abs(corr_matrix_nn)
         corr_matrix_nn *= -1
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)  # Hungarian method
-    elif crossover == "naive":
+    elif crossover == "naive_crossover":
         list_neurons_x, list_neurons_y = list(range(corr_matrix_nn.shape[0])), list(range(corr_matrix_nn.shape[0]))
     else:
         raise ValueError('the crossover method is not defined')
@@ -190,15 +198,15 @@ def apply_mask_and_add_noise(nn_weights_list, list_mask, seed):
             if index == 0:
                 # noise the columns
                 nn_weights_list[index + depth][:, list_mask[layer]] = \
-                    add_noise(nn_weights_list[index + depth][:, list_mask[layer]], 0.5, seed)
+                    add_noise(nn_weights_list[index + depth][:, list_mask[layer]], seed, 0.5)
             elif index == 1:
                 # order columns for bias
                 nn_weights_list[index + depth][list_mask[layer]] = \
-                    add_noise(nn_weights_list[index + depth][list_mask[layer]], 0.5, seed)
+                    add_noise(nn_weights_list[index + depth][list_mask[layer]], seed, 0.5)
             elif index == 2:
                 # order rows
                 nn_weights_list[index + depth][list_mask[layer], :] = \
-                    add_noise(nn_weights_list[index + depth][list_mask[layer], :], 0.5, seed)
+                    add_noise(nn_weights_list[index + depth][list_mask[layer], :], seed, 0.5)
 
         count += 1
         depth = count * 2
@@ -246,24 +254,19 @@ def arithmetic_crossover(network_one, network_two, t=0.5):
     return list_weights
 
 
-def add_noise_to_fittest(network_one, network_two, information_nn_one, information_nn_two, crossover, seed, index):
+def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_gradient_vector=None, safe_mutation=False):
 
     t = 0.5
     if crossover == "noise_0.1":
         t = 0.9
 
     # choose best parent
-    best_parent = network_one
-    if index == 0:
-        pass
-    else:
-        if np.max(information_nn_one.history["val_loss"]) < np.max(information_nn_two.history["val_loss"]):
-            best_parent = network_two
-
     list_weights = []
     for index in range(len(best_parent)):
+        if sensitivity_gradient_vector is not None:
+            gradient_scaling = sensitivity_gradient_vector[index]
         parent_weights = best_parent[index]
-        parent_weights = add_noise(parent_weights, t, seed)
+        parent_weights = add_noise(parent_weights, seed, t, gradient_scaling, safe_mutation)
 
         list_weights.append(parent_weights)
 
