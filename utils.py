@@ -36,13 +36,13 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def add_noise(parent_weights, seed, t=0.5, sensitivity_gradient_vector=None, scaling_mutation_method=False):
+def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_mutation_method=False):
 
     mutation_scaling = 1
-    if scaling_mutation_method == "safe_mutation":
-        mutation_scaling = 1/sensitivity_gradient_vector
-    elif scaling_mutation_method == "unsafe_mutation":
-        mutation_scaling = sensitivity_gradient_vector
+    if "safe" in scaling_mutation_method:
+        mutation_scaling = 1/sensitivity_vector
+    elif "unsafe" in scaling_mutation_method:
+        mutation_scaling = sensitivity_vector
 
     np.random.seed(seed)
 
@@ -83,6 +83,11 @@ def get_gradients_hidden_layers(model, data_x, data_y):
     gradient_list = func([data_x, data_y])
 
     return gradient_list
+
+
+def get_magnitude_weight(weights_list):
+
+    return np.abs(np.array(weights_list))
 
 
 def get_gradient_weights(model, data_x):
@@ -254,19 +259,21 @@ def arithmetic_crossover(network_one, network_two, t=0.5):
     return list_weights
 
 
-def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_gradient_vector=None, safe_mutation=False):
+def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, safe_mutation=False):
 
     t = 0.5
     if crossover == "noise_0.1":
         t = 0.9
 
+    mutation_scaling = None
+
     # choose best parent
     list_weights = []
     for index in range(len(best_parent)):
-        if sensitivity_gradient_vector is not None:
-            gradient_scaling = sensitivity_gradient_vector[index]
+        if sensitivity_vector is not None:
+            mutation_scaling = sensitivity_vector[index]
         parent_weights = best_parent[index]
-        parent_weights = add_noise(parent_weights, seed, t, gradient_scaling, safe_mutation)
+        parent_weights = add_noise(parent_weights, seed, t, mutation_scaling, safe_mutation)
 
         list_weights.append(parent_weights)
 

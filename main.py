@@ -12,6 +12,7 @@ import keras
 from utils import get_gradients_hidden_layers
 from utils import get_hidden_layers
 from utils import get_gradient_weights
+from utils import get_magnitude_weight
 from utils import get_corr
 from utils import crossover_method
 from utils import arithmetic_crossover
@@ -26,8 +27,7 @@ from feed_forward import model_keras
 warnings.filterwarnings("ignore")
 
 
-def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id, data_struc,
-                        parallel="process"):
+def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id, data_struc, parallel="process"):
     # shuffle input data here
     # np.random.seed(work_id)
     # shuffle_list = np.arange(x_train.shape[0])
@@ -40,10 +40,11 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     print("FOR PAIR NUMBER " + str(work_id + 1))
 
     # crossover_types = ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
-    # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation", "unsafe_mutation"]
-    crossover_types = ["safe_mutation"]
+    # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation_gradient", "unsafe_mutation_gradient",
+    # "safe_mutation_magnitude", "unsafe_mutation_magnitude"]
+    crossover_types = ["safe_mutation_magnitude", "unsafe_mutation_magnitude"]
 
-    vector_representation = "gradient"  # "gradient" or "activation"
+    vector_representation = "activation"  # "gradient" or "activation"
     result_list = [[] for _ in range(len(crossover_types)+1)]
     quantile = 0.5
     total_training_epoch = 25
@@ -91,14 +92,17 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         print("crossover method: " + crossover)
         list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
 
-        if vector_representation == "activation":
-            list_hidden_representation_one = get_hidden_layers(parent_one, x_test)  # activation vector network one
-            list_hidden_representation_two = get_hidden_layers(parent_two, x_test)  # activation vector network two
-        elif vector_representation == "gradient":
-            list_hidden_representation_one = get_gradients_hidden_layers(parent_one, x_test, y_test)  # gradient vector
-            list_hidden_representation_two = get_gradients_hidden_layers(parent_two, x_test, y_test)  # gradient vector
+        if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover",
+                         "normed_crossover", "naive_crossover", "noise_low_corr", "noise_high_corr"]:
 
-        list_corr_matrices = get_corr(list_hidden_representation_one, list_hidden_representation_two)
+            if vector_representation == "activation":
+                list_hidden_representation_one = get_hidden_layers(parent_one, x_test)  # activation vector network one
+                list_hidden_representation_two = get_hidden_layers(parent_two, x_test)  # activation vector network two
+            elif vector_representation == "gradient":
+                list_hidden_representation_one = get_gradients_hidden_layers(parent_one, x_test, y_test)  # gradient vector
+                list_hidden_representation_two = get_gradients_hidden_layers(parent_two, x_test, y_test)  # gradient vector
+
+            list_corr_matrices = get_corr(list_hidden_representation_one, list_hidden_representation_two)
 
         if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover", "naive_crossover"]:
             list_ordered_weights_one, list_ordered_weights_two, parents_similarity = crossover_method(
@@ -107,10 +111,15 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         if crossover in ["noise_0.5", "noise_0.1"]:
             weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id)
 
-        elif crossover in ["safe_mutation", "unsafe_mutation"]:
-            sensitivity_gradient_vector = get_gradient_weights(parent_two, x_test)
-            weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id, sensitivity_gradient_vector,
-                                                     True)
+        elif crossover in ["safe_mutation_gradient", "unsafe_mutation_gradient"]:
+            sensitivity_vector = get_magnitude_weight(fittest_weights)
+            weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id, sensitivity_vector,
+                                                     crossover)
+
+        elif crossover in ["safe_mutation_magnitude", "unsafe_mutation_magnitude"]:
+            sensitivity_vector = get_gradient_weights(parent_two, x_test)
+            weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id, sensitivity_vector,
+                                                     crossover)
 
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
             weights_crossover = corr_neurons(list_ordered_weights_one, list_ordered_weights_two,
