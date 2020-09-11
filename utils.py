@@ -85,9 +85,16 @@ def get_gradients_hidden_layers(model, data_x, data_y):
     return gradient_list
 
 
-def get_magnitude_weight(weights_list):
+def get_magnitude_weights(weights_list):
 
     return np.abs(np.array(weights_list))
+
+
+def get_movement_weights(weights_list, best_parent_string, work_id):
+    best_initial_weights = keras.load_model("parents_initial/" + best_parent_string + "_initial_" + str(work_id) + ".hd5")
+    weight_movements = np.abs(np.array(weights_list) - np.array(best_initial_weights))
+
+    return weight_movements
 
 
 def get_gradient_weights(model, data_x):

@@ -2,13 +2,14 @@ import keras
 
 
 class CustomSaver(keras.callbacks.Callback):
-    def __init__(self, epoch_list, parent_id):
+    def __init__(self, epoch_list, parent_id, work_id):
         self.epoch_list = epoch_list
         self.parent_id = parent_id
+        self.work_id = work_id
 
     def on_epoch_end(self, epoch, logs={}):
         if epoch+1 in self.epoch_list:
-            self.model.save("model_" + self.parent_id + "_epoch_" + str(epoch+1) + ".hd5")
+            self.model.save("parents_trained/model_" + self.parent_id + "_epoch_" + str(epoch+1) + "_" + str(self.work_id) + ".hd5")
 
 
 def model_keras(seed, data, weights_hidden_size=None):
