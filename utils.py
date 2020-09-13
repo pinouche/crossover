@@ -2,6 +2,7 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 import pickle
 import keras
+from keras.models import load_model
 
 
 # load data functions
@@ -91,10 +92,29 @@ def get_magnitude_weights(weights_list):
 
 
 def get_movement_weights(weights_list, best_parent_string, work_id):
-    best_initial_weights = keras.load_model("parents_initial/" + best_parent_string + "_initial_" + str(work_id) + ".hd5")
+    best_initial_model = load_model("parents_initial/" + best_parent_string + "_initial_" + str(work_id) + ".hd5")
+    best_initial_weights = best_initial_model.get_weights()
     weight_movements = np.abs(np.array(weights_list) - np.array(best_initial_weights))
 
     return weight_movements
+
+
+# this is for a sinle layer or weight matrix. The output is whether or not neurons/weights have converged
+def check_convergence(array, on_neurons=False, epsilon=0.1):
+    diff_list = []
+    time_steps = array.shape[0]
+    for index in range(time_steps - 1):
+        diff = np.abs(array[index + 1] - array[index])
+        if on_neurons:
+            diff = np.mean(diff, axis=0)
+        diff_list.append(diff)
+
+    condition_one = diff_list[-1] - diff_list[0] < 0
+    condition_two = diff_list[-1] < epsilon
+
+    convergence = condition_one & condition_two
+
+    return diff_list
 
 
 def get_gradient_weights(model, data_x):
@@ -123,7 +143,6 @@ def get_corr(hidden_representation_list_one, hidden_representation_list_two):
         hidden_representation_two = hidden_representation_list_two[index]
 
         n = hidden_representation_one.shape[1]
-        print(n)
 
         corr_matrix_nn = np.empty((n, n))
 
@@ -287,43 +306,25 @@ def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, 
     return list_weights
 
 
-def corr_neurons(network_one, network_two, corr_matrices_list, information_nn_one, information_nn_two,
-                     seed, index, crossover, threshold):
-
-    # choose best parent
-    best_parent = network_one
-    best_parent_switch = False
-    if index == 0:
-        pass
-    else:
-        if np.max(information_nn_one.history["val_loss"]) < np.max(information_nn_two.history["val_loss"]):
-            best_parent = network_two
-            best_parent_switch = True
+def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold):
 
     mask_list = []
     for corr_matrix in corr_matrices_list:
         max_corr_list = []
         for i in range(corr_matrix.shape[0]):
-            list_corr = []
-            for j in range(corr_matrix.shape[1]):
-                if best_parent_switch:
-                    corr = np.abs(corr_matrix[i, j])
-                else:
-                    corr = np.abs(corr_matrix[j, i])
-
-                list_corr.append(corr)
-            max_corr_list.append(np.max(list_corr))
-
-        quantile = np.quantile(max_corr_list, threshold)
+            corr = np.abs(corr_matrix[i, :])
+            corr.sort()
+        max_corr_list.append(corr[-2])
 
         if crossover == "noise_low_corr":
-            mask_array = np.asarray(max_corr_list) >= quantile
+            mask_array = np.asarray(max_corr_list) <= np.quantile(max_corr_list, 1-threshold)
         elif crossover == "noise_high_corr":
-            mask_array = np.asarray(max_corr_list) < quantile
+            mask_array = np.asarray(max_corr_list) >= np.quantile(max_corr_list, threshold)
 
         mask_list.append(mask_array)
 
-    mask_list = [[not element for element in sublist] for sublist in mask_list]
-    list_weights = apply_mask_and_add_noise(best_parent, mask_list, seed)
+    list_weights = apply_mask_and_add_noise(fittest_weights, mask_list, seed)
 
     return list_weights
+
+

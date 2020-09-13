@@ -1,7 +1,5 @@
 import numpy as np
 from timeit import default_timer as timer
-import threading
-import queue
 import multiprocessing
 import warnings
 import pickle
@@ -43,7 +41,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # crossover_types = ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
     # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation_gradient", "unsafe_mutation_gradient",
     # "safe_mutation_magnitude", "unsafe_mutation_magnitude", "safe_mutation_movement", "unsafe_mutation_movement"]
-    crossover_types = ["safe_mutation_magnitude", "unsafe_mutation_magnitude"]
+    crossover_types = ["noise_low_corr"]
 
     vector_representation = "activation"  # "gradient" or "activation"
     result_list = [[] for _ in range(len(crossover_types)+1)]
@@ -53,8 +51,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     model_one = model_keras(work_id, data)
     model_two = model_keras(work_id + num_pairs, data)
-    model_one.save("parents_initial/parent_one_initial_" + str(work_id))
-    model_two.save("parents_initial/parent_two_initial_" + str(work_id))
+    model_one.save("parents_initial/parent_one_initial_" + str(work_id) + ".hd5")
+    model_two.save("parents_initial/parent_two_initial_" + str(work_id) + ".hd5")
 
     print("one")
     save_callback = CustomSaver(epoch_list, "parent_one", work_id)
@@ -85,10 +83,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         weights_nn_two = parent_two.get_weights()
 
         fittest_weights, fittest_model, best_initial = weights_nn_one, parent_one, "parent_one"
+        weakest_weights, weakest_model, weakest_initial = weights_nn_two, parent_two, "parent_two"
         loss_best_parent = model_information_parent_one.history["val_loss"]
         if np.min(loss_best_parent) > np.min(model_information_parent_two.history["val_loss"]):
             loss_best_parent = model_information_parent_two.history["val_loss"]
             fittest_weights, fittest_model, best_initial = weights_nn_two, parent_two, "parent_two"
+            weakest_weights, weakest_model, weakest_initial = weights_nn_one, parent_one, "parent_one"
 
         print("crossover method: " + crossover)
         list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
@@ -97,13 +97,16 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                          "normed_crossover", "naive_crossover", "noise_low_corr", "noise_high_corr"]:
 
             if vector_representation == "activation":
-                list_hidden_representation_one = get_hidden_layers(parent_one, x_test)  # activation vector network one
-                list_hidden_representation_two = get_hidden_layers(parent_two, x_test)  # activation vector network two
+                list_hidden_representation_fittest = get_hidden_layers(fittest_model, x_test)  # activation vector network one
+                list_hidden_representation_weakest = get_hidden_layers(weakest_model, x_test)  # activation vector network two
             elif vector_representation == "gradient":
-                list_hidden_representation_one = get_gradients_hidden_layers(parent_one, x_test, y_test)  # gradient vector
-                list_hidden_representation_two = get_gradients_hidden_layers(parent_two, x_test, y_test)  # gradient vector
+                list_hidden_representation_fittest = get_gradients_hidden_layers(fittest_model, x_test, y_test)  # gradient vector
+                list_hidden_representation_weakest = get_gradients_hidden_layers(weakest_model, x_test, y_test)  # gradient vector
 
-            list_corr_matrices = get_corr(list_hidden_representation_one, list_hidden_representation_two)
+            if crossover not in ["noise_low_corr", "noise_high_corr"]:
+                list_corr_matrices = get_corr(list_hidden_representation_fittest, list_hidden_representation_weakest)
+            else:
+                list_corr_matrices = get_corr(list_hidden_representation_fittest, list_hidden_representation_fittest)
 
         # based on the two parents
         if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover", "naive_crossover"]:
@@ -133,10 +136,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         # based only on fittest parent
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
-            weights_crossover = corr_neurons(list_ordered_weights_one, list_ordered_weights_two,
-                                             list_corr_matrices, model_information_parent_one,
-                                             model_information_parent_two, work_id, best_epoch_parent_one,
-                                             crossover, quantile)
+            weights_crossover = corr_neurons(fittest_weights, list_corr_matrices, work_id, crossover, quantile)
+
         else:
             weights_crossover = arithmetic_crossover(list_ordered_weights_one, list_ordered_weights_two)
 
