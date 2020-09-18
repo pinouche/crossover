@@ -7,11 +7,15 @@ import pickle
 from keras.models import load_model
 import keras
 
+from utils import load_model_long_string
+from utils import compute_mask_convergence
+from utils import apply_mask_and_add_noise
 from utils import get_gradients_hidden_layers
 from utils import get_hidden_layers
 from utils import get_gradient_weights
 from utils import get_magnitude_weights
 from utils import get_movement_weights
+from utils import check_convergence
 from utils import get_corr
 from utils import crossover_method
 from utils import arithmetic_crossover
@@ -40,14 +44,15 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     # crossover_types = ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
     # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation_gradient", "unsafe_mutation_gradient",
-    # "safe_mutation_magnitude", "unsafe_mutation_magnitude", "safe_mutation_movement", "unsafe_mutation_movement"]
-    crossover_types = ["noise_low_corr"]
+    # "safe_mutation_magnitude", "unsafe_mutation_magnitude", "safe_mutation_movement", "unsafe_mutation_movement",
+    # "unsafe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons"]
+    crossover_types = ["safe"]
 
-    vector_representation = "activation"  # "gradient" or "activation"
+    vector_representation = "gradient"  # "gradient" or "activation"
     result_list = [[] for _ in range(len(crossover_types)+1)]
     quantile = 0.5
-    total_training_epoch = 25
-    epoch_list = [20]
+    total_training_epoch = 40
+    epoch_list = np.arange(20, total_training_epoch, 1)
 
     model_one = model_keras(work_id, data)
     model_two = model_keras(work_id + num_pairs, data)
@@ -56,12 +61,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     print("one")
     save_callback = CustomSaver(epoch_list, "parent_one", work_id)
-    model_information_parent_one = model_one.fit(x_train, y_train, epochs=total_training_epoch, batch_size=256,
+    model_information_parent_one = model_one.fit(x_train, y_train, epochs=total_training_epoch, batch_size=512,
                                                  verbose=False,
                                                  validation_data=(x_test, y_test), callbacks=[save_callback])
 
     save_callback = CustomSaver(epoch_list, "parent_two", work_id)
-    model_information_parent_two = model_two.fit(x_train, y_train, epochs=total_training_epoch, batch_size=256,
+    model_information_parent_two = model_two.fit(x_train, y_train, epochs=total_training_epoch, batch_size=512,
                                                  verbose=False,
                                                  validation_data=(x_test, y_test), callbacks=[save_callback])
     print("three")
@@ -82,13 +87,13 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         parent_two = load_model("parents_trained/model_parent_two_epoch_" + str(best_epoch_parent_two) + "_" + str(work_id) + ".hd5")
         weights_nn_two = parent_two.get_weights()
 
-        fittest_weights, fittest_model, best_initial = weights_nn_one, parent_one, "parent_one"
+        fittest_weights, fittest_model, best_initial_id = weights_nn_one, parent_one, "parent_one"
         weakest_weights, weakest_model, weakest_initial = weights_nn_two, parent_two, "parent_two"
         loss_best_parent = model_information_parent_one.history["val_loss"]
         if np.min(loss_best_parent) > np.min(model_information_parent_two.history["val_loss"]):
             loss_best_parent = model_information_parent_two.history["val_loss"]
-            fittest_weights, fittest_model, best_initial = weights_nn_two, parent_two, "parent_two"
-            weakest_weights, weakest_model, weakest_initial = weights_nn_one, parent_one, "parent_one"
+            fittest_weights, fittest_model, best_initial_id = weights_nn_two, parent_two, "parent_two"
+            weakest_weights, weakest_model, weakest_initial_id = weights_nn_one, parent_one, "parent_one"
 
         print("crossover method: " + crossover)
         list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
@@ -130,9 +135,27 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         # based only on fittest parent
         elif crossover in ["safe_mutation_movement", "unsafe_mutation_movement"]:
-            sensitivity_vector = get_movement_weights(fittest_weights, best_initial, work_id)
+            sensitivity_vector = get_movement_weights(fittest_weights, best_initial_id, work_id)
             weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id, sensitivity_vector,
                                                      crossover)
+
+        elif crossover in ["safe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons"]:
+
+            activation_epochs = []
+            for index in epoch_list:
+                model = load_model_long_string(best_initial_id, work_id, index)
+                hidden_representation = get_hidden_layers(model, x_test)
+                activation_epochs.append(hidden_representation)
+            activation_epochs = np.array(activation_epochs)
+
+            #representation_fittest = get_hidden_layers(fittest_model, x_test)
+
+            var_list, corr_list = check_convergence(activation_epochs)
+            mask_convergence = compute_mask_convergence(var_list, corr_list)
+
+            if "safe" in crossover:
+                mask_convergence = [~mask for mask in mask_convergence]
+            weights_crossover = apply_mask_and_add_noise(fittest_weights, mask_convergence, work_id)
 
         # based only on fittest parent
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
@@ -146,8 +169,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         model_offspring.set_weights(weights_crossover)
         model_information_offspring = model_offspring.fit(x_train, y_train,
                                                           epochs=total_training_epoch,
-                                                          batch_size=256,
-                                                          verbose=False, validation_data=(x_test, y_test))
+                                                          batch_size=512,
+                                                          verbose=True, validation_data=(x_test, y_test))
 
         if count == 0:
             result_list[count].append(loss_best_parent)

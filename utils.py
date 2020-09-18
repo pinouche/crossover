@@ -3,6 +3,7 @@ from scipy.optimize import linear_sum_assignment
 import pickle
 import keras
 from keras.models import load_model
+import scipy.stats as stats
 
 
 # load data functions
@@ -37,12 +38,19 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_mutation_method=False):
+def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_mutation_method=[]):
+
+    upper_limit = 2
+    lower_limit = 1/upper_limit
 
     mutation_scaling = 1
     if "safe" in scaling_mutation_method:
+        sensitivity_vector = (upper_limit-lower_limit)*((sensitivity_vector-np.min(sensitivity_vector))/
+                                                        (np.max(sensitivity_vector)-np.min(sensitivity_vector)))+lower_limit
         mutation_scaling = 1/sensitivity_vector
     elif "unsafe" in scaling_mutation_method:
+        sensitivity_vector = (upper_limit-lower_limit)*((sensitivity_vector-np.min(sensitivity_vector))/
+                                                        (np.max(sensitivity_vector)-np.min(sensitivity_vector)))+lower_limit
         mutation_scaling = sensitivity_vector
 
     np.random.seed(seed)
@@ -99,22 +107,43 @@ def get_movement_weights(weights_list, best_parent_string, work_id):
     return weight_movements
 
 
-# this is for a sinle layer or weight matrix. The output is whether or not neurons/weights have converged
-def check_convergence(array, on_neurons=False, epsilon=0.1):
-    diff_list = []
-    time_steps = array.shape[0]
-    for index in range(time_steps - 1):
-        diff = np.abs(array[index + 1] - array[index])
-        if on_neurons:
-            diff = np.mean(diff, axis=0)
-        diff_list.append(diff)
+def check_convergence(activation_list_epochs):
+    corr_list = [[] for _ in range(activation_list_epochs.shape[0] - 1)]
+    var_list = [[] for _ in range(activation_list_epochs.shape[0] - 1)]
 
-    condition_one = diff_list[-1] - diff_list[0] < 0
-    condition_two = diff_list[-1] < epsilon
+    for index in range(activation_list_epochs.shape[0] - 1):
+        for layer in range(activation_list_epochs.shape[1]):
+            layer_list_var = []
+            layer_list_corr = []
+            for neuron in range(activation_list_epochs.shape[-1]):
+                corr = stats.pearsonr(activation_list_epochs[index][layer][:, neuron],
+                                      activation_list_epochs[index + 1][layer][:, neuron])[0]
+                var = np.var(activation_list_epochs[index][layer][:, neuron])
 
-    convergence = condition_one & condition_two
+                layer_list_var.append(var)
+                layer_list_corr.append(corr)
 
-    return diff_list
+            var_list[index].append(layer_list_var)
+            corr_list[index].append(layer_list_corr)
+
+    return np.array(var_list), np.array(corr_list)
+
+
+def compute_mask_convergence(var_list, corr_list):
+
+    mask_list = []
+
+    for layer in range(var_list.shape[1]):
+        mask_variance = (var_list[-1, layer, :] < 0.2) | ((var_list[-1, layer, :] - var_list[0, layer, :]) < 0) | (
+                    (var_list[-1, layer, :] - var_list[-2, layer, :]) < 0)
+
+        mask_corr = ((corr_list[-1, layer, :] < 0.9) | (corr_list[-2, layer, :] < 0.9)) | (
+                    (corr_list[-1, layer, :] - corr_list[0, layer, :]) < 0)
+
+        mask_layer = mask_corr | mask_variance
+        mask_list.append(mask_layer)
+
+    return mask_list
 
 
 def get_gradient_weights(model, data_x):
@@ -285,7 +314,7 @@ def arithmetic_crossover(network_one, network_two, t=0.5):
     return list_weights
 
 
-def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, safe_mutation=False):
+def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, safe_mutation=[]):
 
     t = 0.5
     if crossover == "noise_0.1":
@@ -314,7 +343,7 @@ def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold
         for i in range(corr_matrix.shape[0]):
             corr = np.abs(corr_matrix[i, :])
             corr.sort()
-        max_corr_list.append(corr[-2])
+            max_corr_list.append(corr[-2])
 
         if crossover == "noise_low_corr":
             mask_array = np.asarray(max_corr_list) <= np.quantile(max_corr_list, 1-threshold)
@@ -326,5 +355,12 @@ def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold
     list_weights = apply_mask_and_add_noise(fittest_weights, mask_list, seed)
 
     return list_weights
+
+
+def load_model_long_string(best_initial_id, work_id, epoch):
+
+    model = load_model("parents_trained/model_" + best_initial_id + "_epoch_" + str(epoch+1) + "_" + str(work_id) + ".hd5")
+
+    return model
 
 
