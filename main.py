@@ -45,14 +45,14 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # crossover_types = ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
     # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation_gradient", "unsafe_mutation_gradient",
     # "safe_mutation_magnitude", "unsafe_mutation_magnitude", "safe_mutation_movement", "unsafe_mutation_movement",
-    # "unsafe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons"]
-    crossover_types = ["safe"]
+    # "safe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons", "noise_0.5", "noise_0.1"]
+    crossover_types = ["orthogonal_crossover"]
 
-    vector_representation = "gradient"  # "gradient" or "activation"
+    vector_representation = "activation"  # "gradient" or "activation"
     result_list = [[] for _ in range(len(crossover_types)+1)]
-    quantile = 0.5
-    total_training_epoch = 40
-    epoch_list = np.arange(20, total_training_epoch, 1)
+    quantile = 0.7
+    total_training_epoch = 60
+    epoch_list = np.arange(0, total_training_epoch, 1)
 
     model_one = model_keras(work_id, data)
     model_two = model_keras(work_id + num_pairs, data)
@@ -142,13 +142,11 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         elif crossover in ["safe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons"]:
 
             activation_epochs = []
-            for index in epoch_list:
+            for index in np.arange(0, total_training_epoch, 5):
                 model = load_model_long_string(best_initial_id, work_id, index)
                 hidden_representation = get_hidden_layers(model, x_test)
                 activation_epochs.append(hidden_representation)
             activation_epochs = np.array(activation_epochs)
-
-            #representation_fittest = get_hidden_layers(fittest_model, x_test)
 
             var_list, corr_list = check_convergence(activation_epochs)
             mask_convergence = compute_mask_convergence(var_list, corr_list)

@@ -64,7 +64,7 @@ def model_keras(seed, data, weights_hidden_size=None):
     else:
         raise Exception("wrong dataset")
 
-    adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
+    adam = keras.optimizers.Adam(lr=0.0005, beta_1=0.9, beta_2=0.999, amsgrad=False)
     model.compile(optimizer=adam, loss='sparse_categorical_crossentropy',
                   metrics=['accuracy', 'sparse_categorical_crossentropy'])
 
