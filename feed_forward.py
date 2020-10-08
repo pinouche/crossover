@@ -36,7 +36,7 @@ def model_keras(seed, data, lr=0.0002, weights_hidden_size=None):
 
     elif data == "cifar10" or data == "cifar100":
         input_size = 3072
-        hidden_size = 512
+        hidden_size = 256
 
         output_size = 10
         if data == "cifar100":

@@ -122,26 +122,16 @@ def get_movement_weights(weights_list, best_parent_string, work_id):
     return weight_movements
 
 
-def check_convergence(activation_list_epochs):
-    corr_list = [[] for _ in range(activation_list_epochs.shape[0] - 1)]
-    var_list = [[] for _ in range(activation_list_epochs.shape[0] - 1)]
+def compute_neurons_variance(activation_list):
+    var_list = []
 
-    for index in range(activation_list_epochs.shape[0] - 1):
-        for layer in range(activation_list_epochs.shape[1]):
-            layer_list_var = []
-            layer_list_corr = []
-            for neuron in range(activation_list_epochs.shape[-1]):
-                corr = stats.pearsonr(activation_list_epochs[index][layer][:, neuron],
-                                      activation_list_epochs[index + 1][layer][:, neuron])[0]
-                var = np.var(activation_list_epochs[index][layer][:, neuron])
+    for layer in range(len(activation_list)):
+        activation_matrix = activation_list[layer]
+        neurons_variance = np.var(activation_matrix, axis=0)
 
-                layer_list_var.append(var)
-                layer_list_corr.append(corr)
+        var_list.append(neurons_variance)
 
-            var_list[index].append(layer_list_var)
-            corr_list[index].append(layer_list_corr)
-
-    return np.array(var_list), np.array(corr_list)
+    return var_list
 
 
 def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices):
@@ -156,8 +146,7 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
 
         mask_best_parent = mask_convergence_best_parent[index]
         mask_worst_parent = mask_convergence_worst_parent[index]
-        #number_of_neurons_to_replace = min(np.sum(mask_best_parent), np.sum(mask_worst_parent))
-        number_of_neurons_to_replace = 10
+        number_of_neurons_to_replace = min(np.sum(mask_best_parent), np.sum(mask_worst_parent))
         indices_neurons_non_converged_best_parent = [index for index in range(len(mask_best_parent)) if
                                                      mask_best_parent[index]]
 
@@ -174,24 +163,20 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
                 max_corr = np.max(corr)
                 max_corr_list.append((max_corr, j))
         max_corr_list.sort()
+        print(max_corr_list)
         indices = [tuples[1] for tuples in max_corr_list[:number_of_neurons_to_replace]]
         neurons_indices_list_worst_parent.append(indices)
 
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
 
-def compute_mask_convergence(var_list, corr_list):
+def compute_mask_convergence(var_list):
 
     mask_list = []
 
-    for layer in range(var_list.shape[1]):
-        mask_variance = (var_list[-1, layer, :] < 0.2) | ((var_list[-1, layer, :] - var_list[0, layer, :]) < 0) | (
-                    (var_list[-1, layer, :] - var_list[-2, layer, :]) < 0)
+    for layer in range(len(var_list)):
+        mask_layer = var_list[layer] < 0.1
 
-        mask_corr = ((corr_list[-1, layer, :] < 0.9) | (corr_list[-2, layer, :] < 0.9)) | (
-                    (corr_list[-1, layer, :] - corr_list[0, layer, :]) < 0)
-
-        mask_layer = mask_corr | mask_variance
         mask_list.append(mask_layer)
 
     return mask_list
