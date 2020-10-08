@@ -23,6 +23,21 @@ def load_mnist():
     return x_train, x_test, y_train, y_test
 
 
+def load_cifar_100(flatten=True):
+    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data(label_mode="coarse")
+    x_train = x_train.astype('float32')
+    x_test = x_test.astype('float32')
+
+    x_train = x_train / 255.0
+    x_test = x_test / 255.0
+
+    if flatten:
+        x_train = np.reshape(x_train, (x_train.shape[0], 3072))
+        x_test = np.reshape(x_test, (x_test.shape[0], 3072))
+
+    return x_train, x_test, y_train, y_test
+
+
 def load_cifar(flatten=True):
     (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
     x_train = x_train.astype('float32')
@@ -127,6 +142,42 @@ def check_convergence(activation_list_epochs):
             corr_list[index].append(layer_list_corr)
 
     return np.array(var_list), np.array(corr_list)
+
+
+def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices):
+
+    neurons_indices_list_worst_parent = []
+    indices_neurons_non_converged_best_parent_list = []
+
+    # want those that have converged in worst parent
+    mask_convergence_worst_parent = [~mask for mask in mask_convergence_worst_parent]
+
+    for index in range(len(list_corr_matrices)):
+
+        mask_best_parent = mask_convergence_best_parent[index]
+        mask_worst_parent = mask_convergence_worst_parent[index]
+        #number_of_neurons_to_replace = min(np.sum(mask_best_parent), np.sum(mask_worst_parent))
+        number_of_neurons_to_replace = 10
+        indices_neurons_non_converged_best_parent = [index for index in range(len(mask_best_parent)) if
+                                                     mask_best_parent[index]]
+
+        # choose randomly the indices of neurons to replace from the non-converged neurons in the best parent
+        indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[:number_of_neurons_to_replace]
+        indices_neurons_non_converged_best_parent_list.append(indices_neurons_non_converged_best_parent)
+
+        corr_matrix = list_corr_matrices[index][~mask_best_parent]
+
+        max_corr_list = []
+        for j in range(corr_matrix.shape[1]):
+            if mask_worst_parent[j]:
+                corr = np.abs(corr_matrix[:, j])
+                max_corr = np.max(corr)
+                max_corr_list.append((max_corr, j))
+        max_corr_list.sort()
+        indices = [tuples[1] for tuples in max_corr_list[:number_of_neurons_to_replace]]
+        neurons_indices_list_worst_parent.append(indices)
+
+    return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
 
 def compute_mask_convergence(var_list, corr_list):
@@ -276,6 +327,26 @@ def apply_mask_and_add_noise(nn_weights_list, list_mask, seed):
     return nn_weights_list
 
 
+def transplant_neurons(fittest_weights, weakest_weights, indices_neurons_transplant, indices_neurons_to_remove,
+                       layer, depth):
+
+    for index in range(3):
+        if index == 0:
+            # order the columns
+            fittest_weights[index + depth][:, indices_neurons_to_remove[layer]] = \
+                weakest_weights[index + depth][:, indices_neurons_transplant[layer]]
+        elif index == 1:
+            # order columns for bias
+            fittest_weights[index + depth][indices_neurons_to_remove[layer]] = \
+                weakest_weights[index + depth][indices_neurons_transplant[layer]]
+        elif index == 2:
+            # order rows
+            fittest_weights[index + depth][indices_neurons_to_remove[layer], :] = \
+                weakest_weights[index + depth][indices_neurons_transplant[layer], :]
+
+    return fittest_weights
+
+
 def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     list_ordered_indices_one = []
     list_ordered_indices_two = []
@@ -355,6 +426,13 @@ def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold
     list_weights = apply_mask_and_add_noise(fittest_weights, mask_list, seed)
 
     return list_weights
+
+
+def scale_fittest_parent(fittest_weights):
+
+    fittest_weights = fittest_weights/np.sqrt(2)
+
+    return fittest_weights
 
 
 def load_model_long_string(best_initial_id, work_id, epoch):

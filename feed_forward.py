@@ -12,7 +12,7 @@ class CustomSaver(keras.callbacks.Callback):
             self.model.save("parents_trained/model_" + self.parent_id + "_epoch_" + str(epoch+1) + "_" + str(self.work_id) + ".hd5")
 
 
-def model_keras(seed, data, weights_hidden_size=None):
+def model_keras(seed, data, lr=0.0002, weights_hidden_size=None):
     if data == "mnist":
         input_size = 784
         hidden_size = 512
@@ -34,10 +34,13 @@ def model_keras(seed, data, weights_hidden_size=None):
             keras.layers.Activation(keras.activations.softmax)
         ])
 
-    elif data == "cifar10":
+    elif data == "cifar10" or data == "cifar100":
         input_size = 3072
-        hidden_size = 100
+        hidden_size = 512
+
         output_size = 10
+        if data == "cifar100":
+            output_size = 20
 
         if weights_hidden_size is not None:
             hidden_size = weights_hidden_size
@@ -64,7 +67,7 @@ def model_keras(seed, data, weights_hidden_size=None):
     else:
         raise Exception("wrong dataset")
 
-    adam = keras.optimizers.Adam(lr=0.0005, beta_1=0.9, beta_2=0.999, amsgrad=False)
+    adam = keras.optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, amsgrad=False)
     model.compile(optimizer=adam, loss='sparse_categorical_crossentropy',
                   metrics=['accuracy', 'sparse_categorical_crossentropy'])
 
