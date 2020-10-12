@@ -3,7 +3,6 @@ from scipy.optimize import linear_sum_assignment
 import pickle
 import keras
 from keras.models import load_model
-import scipy.stats as stats
 
 
 # load data functions
@@ -170,12 +169,14 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
 
-def compute_mask_convergence(var_list):
+def compute_mask_convergence(var_list, q):
 
     mask_list = []
 
     for layer in range(len(var_list)):
-        mask_layer = var_list[layer] < 0.1
+        var_layer = var_list[layer]
+        percentile_value = np.quantile(var_layer, q)
+        mask_layer = var_layer < percentile_value
 
         mask_list.append(mask_layer)
 

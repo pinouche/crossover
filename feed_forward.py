@@ -12,7 +12,7 @@ class CustomSaver(keras.callbacks.Callback):
             self.model.save("parents_trained/model_" + self.parent_id + "_epoch_" + str(epoch+1) + "_" + str(self.work_id) + ".hd5")
 
 
-def model_keras(seed, data, lr=0.0002, weights_hidden_size=None):
+def model_keras(seed, data, lr=0.0001, weights_hidden_size=None):
     if data == "mnist":
         input_size = 784
         hidden_size = 512
