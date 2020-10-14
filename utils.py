@@ -133,7 +133,8 @@ def compute_neurons_variance(activation_list):
     return var_list
 
 
-def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices):
+def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices,
+                                 corr_wanted):
 
     neurons_indices_list_worst_parent = []
     indices_neurons_non_converged_best_parent_list = []
@@ -150,7 +151,11 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
                                                      mask_best_parent[index]]
 
         # choose randomly the indices of neurons to replace from the non-converged neurons in the best parent
-        indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[:number_of_neurons_to_replace]
+        if corr_wanted == "low":
+            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[:number_of_neurons_to_replace]
+        elif corr_wanted == "high":
+            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[-number_of_neurons_to_replace:]
+
         indices_neurons_non_converged_best_parent_list.append(indices_neurons_non_converged_best_parent)
 
         corr_matrix = list_corr_matrices[index][~mask_best_parent]
