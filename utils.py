@@ -134,7 +134,7 @@ def compute_neurons_variance(activation_list):
 
 
 def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices,
-                                 corr_wanted):
+                                 corr_wanted="low"):
 
     neurons_indices_list_worst_parent = []
     indices_neurons_non_converged_best_parent_list = []

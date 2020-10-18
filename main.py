@@ -51,18 +51,15 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation_gradient", "unsafe_mutation_gradient",
     # "safe_mutation_magnitude", "unsafe_mutation_magnitude", "safe_mutation_movement", "unsafe_mutation_movement",
     # "safe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons", "noise_0.5", "noise_0.1",
-    # "aligned_targeted_crossover", "aligned_targeted_freeze_training_crossover", "fine_tune_fittest",
+    # "aligned_targeted_crossover_high_corr", "aligned_targeted_freeze_training_crossover", "fine_tune_fittest",
     # "scale_fittest_parent"]
     crossover_types = ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
-                       "fine_tune_fittest"]
-
-    # "fine_tune" or "fixed"
-    transfer_style = "fixed"
+                       "aligned_targeted_crossover_variance", "fine_tune_fittest"]
 
     vector_representation = "activation"  # "gradient" or "activation"
-    result_list = [[] for _ in range(len(crossover_types) + 1)]
+    result_list = []
     quantile = 0.8
-    total_training_epoch = 100
+    total_training_epoch = 10
     epoch_list = np.arange(0, total_training_epoch, 1)
 
     model_one = model_keras(work_id, data)
@@ -82,48 +79,48 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                  verbose=False,
                                                  validation_data=(x_test, y_test), callbacks=[save_callback])
 
-    counter = 0
+    # get the parents' weights at the best epoch and retrieve the initial weights
+    best_epoch_parent_one = np.argmin(model_information_parent_one.history["val_loss"])
+    best_epoch_parent_two = np.argmin(model_information_parent_two.history["val_loss"])
+
     for crossover in crossover_types:
 
-        # get the parents' weights at the best epoch and retrieve the initial weights
-        best_epoch_parent_one = np.argmin(model_information_parent_one.history["val_loss"])
         parent_one = load_model(
             "parents_trained/model_parent_one_epoch_" + str(best_epoch_parent_one) + "_" + str(work_id) + ".hd5")
         weights_nn_one = parent_one.get_weights()
 
-        best_epoch_parent_two = np.argmin(model_information_parent_two.history["val_loss"])
         parent_two = load_model(
             "parents_trained/model_parent_two_epoch_" + str(best_epoch_parent_two) + "_" + str(work_id) + ".hd5")
         weights_nn_two = parent_two.get_weights()
 
         # find which network out of the two is the fittest
-        fittest_weights, fittest_initial_weights, fittest_model, best_initial_id = weights_nn_one, \
-                                                                                   weight_one_initial, \
+        fittest_weights, fittest_initial_weights, fittest_model, best_initial_id = weights_nn_one.copy(), \
+                                                                                   weight_one_initial.copy(), \
                                                                                    parent_one, \
                                                                                    "parent_one"
 
-        weakest_weights, weakest_initial_weights, weakest_model, weakest_initial_id = weights_nn_two, \
-                                                                                      weight_two_initial, \
+        weakest_weights, weakest_initial_weights, weakest_model, weakest_initial_id = weights_nn_two.copy(), \
+                                                                                      weight_two_initial.copy(), \
                                                                                       parent_two, \
                                                                                       "parent_two"
+
         loss_best_parent = model_information_parent_one.history["val_loss"]
         if np.min(loss_best_parent) > np.min(model_information_parent_two.history["val_loss"]):
             loss_best_parent = model_information_parent_two.history["val_loss"]
-            fittest_weights, fittest_initial_weights, fittest_model, best_initial_id = weights_nn_two, \
-                                                                                       weight_two_initial, \
+            fittest_weights, fittest_initial_weights, fittest_model, best_initial_id = weights_nn_two.copy(), \
+                                                                                       weight_two_initial.copy(), \
                                                                                        parent_two, "parent_two"
 
-            weakest_weights, weakest_initial_weights, weakest_model, weakest_initial_id = weights_nn_one, \
-                                                                                          weight_one_initial, \
+            weakest_weights, weakest_initial_weights, weakest_model, weakest_initial_id = weights_nn_one.copy(), \
+                                                                                          weight_one_initial.copy(), \
                                                                                           parent_one, \
                                                                                           "parent_one"
 
         print("crossover method: " + crossover)
-        list_ordered_weights_one, list_ordered_weights_two = weights_nn_one, weights_nn_two
 
         if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
                          "naive_crossover", "noise_low_corr", "noise_high_corr", "aligned_targeted_crossover_high_corr",
-                         "aligned_targeted_crossover_low_corr"]:
+                         "aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_variance"]:
 
             if vector_representation == "activation":
                 list_hidden_representation_fittest = get_hidden_layers(fittest_model,
@@ -144,8 +141,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         # based on the two parents
         if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
                          "naive_crossover"]:
-            list_ordered_weights_one, list_ordered_weights_two, parents_similarity = crossover_method(
-                list_ordered_weights_one, list_ordered_weights_two, list_corr_matrices, crossover)
+            fittest_weights, weakest_weights, parents_similarity = crossover_method(fittest_weights, weakest_weights,
+                                                                                    list_corr_matrices, crossover)
 
         # based only on fittest parent
         if crossover in ["noise_0.5", "noise_0.1"]:
@@ -168,7 +165,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             weights_crossover = add_noise_to_fittest(fittest_weights, crossover, work_id, sensitivity_vector,
                                                      crossover)
 
-        elif crossover in ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr"]:
+        elif crossover in ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
+                           "aligned_targeted_crossover_variance"]:
 
             # first, functionally align the trained and initial networks
             list_corr_matrices_copy = list_corr_matrices.copy()
@@ -195,20 +193,23 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
             var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
 
-            q = 0.05
-            mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, q)
-            mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, 0.5)
+            q_fittest = 0.1
+            q_worst = 0.5
+            if crossover == "aligned_targeted_crossover_variance":
+                q_worst = 1 - q_fittest
+
+            mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, q_fittest)
+            mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, q_worst)
 
             # this function identifies neurons from the weaker parent
             corr_wanted = "low"
-            if crossover in ["aligned_targeted_crossover_high_corr"]:
+            if crossover == "aligned_targeted_crossover_high_corr":
                 corr_wanted = "high"
 
             list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
                 mask_convergence_best_parent,
                 mask_convergence_worst_parent,
                 list_corr_matrices, corr_wanted)
-            print(list_neurons_to_transplant, list_neurons_to_remove)
 
             depth = 0
 
@@ -236,18 +237,17 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                                        list_corr_matrices_copy,
                                                                        "safe_crossover")
 
-            weights_crossover = fittest_weights
-
         elif crossover in ["aligned_targeted_freeze_training_crossover"]:
 
-            number_of_layers = len(model_one.layers)
+            list_performance = []
+            number_of_hidden_layers = len(model_one.layers) - 2
             fittest_weights, weakest_weights = fittest_initial_weights, weakest_initial_weights
-            number_epochs_interval = int(total_training_epoch / number_of_layers)
-            trainable_list = [True] * number_of_layers
+            number_epochs_interval = int(total_training_epoch / (number_of_hidden_layers + 1))
+            trainable_list = [True] * (number_of_hidden_layers + 1)
 
             depth = 0
 
-            for layer in range(number_of_layers):
+            for layer in range(number_of_hidden_layers):
 
                 if layer != 0:
                     trainable_list[:layer] = [False] * len(trainable_list[:layer])
@@ -263,10 +263,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                                 batch_size=512,
                                                                 verbose=True, validation_data=(x_test, y_test))
 
-                model_information_weakest = model_weakest.fit(x_train, y_train,
-                                                              epochs=number_epochs_interval,
-                                                              batch_size=512,
-                                                              verbose=True, validation_data=(x_test, y_test))
+                list_performance.append(model_information_offspring.history["val_loss"])
+
+                model_weakest.fit(x_train, y_train,
+                                  epochs=number_epochs_interval,
+                                  batch_size=512,
+                                  verbose=False, validation_data=(x_test, y_test))
 
                 hidden_representation_fittest = get_hidden_layers(model_fittest, x_test)
                 hidden_representation_weakest = get_hidden_layers(model_weakest, x_test)
@@ -316,7 +318,17 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                                        list_corr_matrices_copy,
                                                                        "safe_crossover")
 
-            weights_crossover = fittest_weights
+            trainable_list[:-1] = [False] * len(trainable_list[:-1])
+            model_fittest = model_keras(0, data, trainable_list)
+            model_fittest.set_weights(fittest_weights)
+
+            model_information_offspring = model_fittest.fit(x_train, y_train,
+                                                            epochs=number_epochs_interval,
+                                                            batch_size=512,
+                                                            verbose=True, validation_data=(x_test, y_test))
+
+            list_performance.append(model_information_offspring.history["val_loss"])
+            list_performance = [val for sub_list in list_performance for val in sub_list]
 
         # based only on fittest parent
         elif crossover in ["noise_low_corr", "noise_high_corr"]:
@@ -326,39 +338,45 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             weights_crossover = scale_fittest_parent(fittest_weights)
 
         elif crossover in ["fine_tune_fittest"]:
-            weights_crossover = fittest_weights
+            weights_crossover = fittest_weights.copy()
 
         else:
-            weights_crossover = arithmetic_crossover(list_ordered_weights_one, list_ordered_weights_two)
+            weights_crossover = arithmetic_crossover(fittest_weights, weakest_weights)
 
-        if crossover not in ["aligned_targeted_freeze_training_crossover"]:
+        if crossover in ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
+                         "aligned_targeted_crossover_variance", "fine_tune_fittest"]:
 
-            # fine tuning vs transfer learning with fixed lower layers
-            trainable_list = []
-            if transfer_style == "fixed":
-                trainable_list = [True] * len(model_one.layers)
-                trainable_list[:-2] = [False] * (len(trainable_list) - 2)
+            for transfer_style in ["fine_tune", "fixed"]:
+                print(transfer_style)
 
-            model_offspring = model_keras(0, data, trainable_list)
+                weights_crossover = fittest_weights.copy()
 
-            # reset the weights of the last linear layer (Glorot normal)
-            weights_crossover[-1] = np.random.normal(loc=0.0, scale=np.sqrt(2 / (weights_crossover[-1].shape[0] +
-                                                                                 weights_crossover[-1].shape[1])),
-                                                     size=weights_crossover[-1].shape)
+                # fine tuning vs transfer learning with fixed lower layers
+                trainable_list = []
+                if transfer_style == "fixed":
+                    trainable_list = [True] * (len(model_one.layers) - 1)
+                    trainable_list[:-1] = [False] * (len(trainable_list) - 1)
 
-            model_offspring.set_weights(weights_crossover)
-            model_information_offspring = model_offspring.fit(x_train, y_train,
-                                                              epochs=total_training_epoch,
-                                                              batch_size=512,
-                                                              verbose=True, validation_data=(x_test, y_test))
+                model_offspring = model_keras(0, data, trainable_list)
 
-        if counter == 0:
-            result_list[counter].append(loss_best_parent)
-        result_list[counter + 1].append(model_information_offspring.history["val_loss"])
+                # reset the weights of the last linear layer (Glorot normal)
+                weights_crossover[-1] = np.random.normal(loc=0.0, scale=np.sqrt(2 / (weights_crossover[-1].shape[0] +
+                                                                                     weights_crossover[-1].shape[1])),
+                                                         size=weights_crossover[-1].shape)
+
+                model_offspring.set_weights(weights_crossover)
+                model_information_offspring = model_offspring.fit(x_train, y_train,
+                                                                  epochs=total_training_epoch,
+                                                                  batch_size=512,
+                                                                  verbose=True, validation_data=(x_test, y_test))
+
+                list_performance = model_information_offspring.history["val_loss"]
+
+                result_list.append(list_performance)
 
         keras.backend.clear_session()
-        counter += 1
 
+    result_list.append(loss_best_parent)
     if parallel == "process":
         data_struc[str(work_id) + "_performance"] = result_list
 
