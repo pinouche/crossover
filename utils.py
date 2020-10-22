@@ -52,19 +52,40 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_mutation_method=[]):
+def partition_classes(x_train, x_test, y_train, y_test):
 
+    cut_off = int(len(np.unique(y_train))/4)
+
+    mask_train = np.squeeze(y_train >= cut_off)
+    mask_test = np.squeeze(y_test >= cut_off)
+
+    x_train_s1 = x_train[mask_train]
+    y_train_s1 = y_train[mask_train]
+    x_test_s1 = x_test[mask_test]
+    y_test_s1 = y_test[mask_test]
+
+    x_train_s2 = x_train[~mask_train]
+    y_train_s2 = y_train[~mask_train]
+    x_test_s2 = x_test[~mask_test]
+    y_test_s2 = y_test[~mask_test]
+
+    return x_train_s1, y_train_s1, x_test_s1, y_test_s1, x_train_s2, y_train_s2, x_test_s2, y_test_s2
+
+
+def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_mutation_method=[]):
     upper_limit = 2
-    lower_limit = 1/upper_limit
+    lower_limit = 1 / upper_limit
 
     mutation_scaling = 1
     if "safe" in scaling_mutation_method:
-        sensitivity_vector = (upper_limit-lower_limit)*((sensitivity_vector-np.min(sensitivity_vector))/
-                                                        (np.max(sensitivity_vector)-np.min(sensitivity_vector)))+lower_limit
-        mutation_scaling = 1/sensitivity_vector
+        sensitivity_vector = (upper_limit - lower_limit) * ((sensitivity_vector - np.min(sensitivity_vector)) /
+                                                            (np.max(sensitivity_vector) - np.min(
+                                                                sensitivity_vector))) + lower_limit
+        mutation_scaling = 1 / sensitivity_vector
     elif "unsafe" in scaling_mutation_method:
-        sensitivity_vector = (upper_limit-lower_limit)*((sensitivity_vector-np.min(sensitivity_vector))/
-                                                        (np.max(sensitivity_vector)-np.min(sensitivity_vector)))+lower_limit
+        sensitivity_vector = (upper_limit - lower_limit) * ((sensitivity_vector - np.min(sensitivity_vector)) /
+                                                            (np.max(sensitivity_vector) - np.min(
+                                                                sensitivity_vector))) + lower_limit
         mutation_scaling = sensitivity_vector
 
     np.random.seed(seed)
@@ -73,14 +94,13 @@ def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_muta
     mean_parent, std_parent = 0.0, np.std(parent_weights)
 
     weight_noise = np.random.normal(loc=mean_parent, scale=std_parent, size=parent_weights.shape)
-    weight_noise = weight_noise*mutation_scaling
+    weight_noise = weight_noise * mutation_scaling
     parent_weights = (t * parent_weights + (1 - t) * weight_noise) * scale_factor
 
     return parent_weights
 
 
 def get_hidden_layers(model, data_x):
-
     def keras_function_layer(model_layer, data):
         hidden_func = keras.backend.function(model.layers[0].input, model_layer.output)
         result = hidden_func([data])
@@ -88,7 +108,7 @@ def get_hidden_layers(model, data_x):
         return result
 
     hidden_layers_list = []
-    for index in range(len(model.layers)-2):
+    for index in range(len(model.layers) - 2):
         hidden_layer = keras_function_layer(model.layers[index], data_x)
         hidden_layers_list.append(hidden_layer)
 
@@ -109,7 +129,6 @@ def get_gradients_hidden_layers(model, data_x, data_y):
 
 
 def get_magnitude_weights(weights_list):
-
     return np.abs(np.array(weights_list))
 
 
@@ -121,13 +140,17 @@ def get_movement_weights(weights_list, best_parent_string, work_id):
     return weight_movements
 
 
-def compute_neurons_variance(activation_list):
+def compute_neurons_variance(activations):
     var_list = []
 
-    for layer in range(len(activation_list)):
-        activation_matrix = activation_list[layer]
-        neurons_variance = np.var(activation_matrix, axis=0)
+    if isinstance(activations, list):
 
+        for layer in range(len(activations)):
+            activation_matrix = activations[layer]
+            neurons_variance = np.var(activation_matrix, axis=0)
+            var_list.append(neurons_variance)
+    else:
+        neurons_variance = np.var(activations, axis=0)
         var_list.append(neurons_variance)
 
     return var_list
@@ -135,7 +158,6 @@ def compute_neurons_variance(activation_list):
 
 def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices,
                                  corr_wanted="low"):
-
     neurons_indices_list_worst_parent = []
     indices_neurons_non_converged_best_parent_list = []
 
@@ -152,9 +174,11 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
 
         # choose randomly the indices of neurons to replace from the non-converged neurons in the best parent
         if corr_wanted == "low":
-            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[:number_of_neurons_to_replace]
+            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[
+                                                        :number_of_neurons_to_replace]
         elif corr_wanted == "high":
-            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[-number_of_neurons_to_replace:]
+            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[
+                                                        -number_of_neurons_to_replace:]
 
         indices_neurons_non_converged_best_parent_list.append(indices_neurons_non_converged_best_parent)
 
@@ -174,14 +198,20 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
 
-def compute_mask_convergence(var_list, q):
-
+def compute_mask_convergence(variance, q):
     mask_list = []
 
-    for layer in range(len(var_list)):
-        var_layer = var_list[layer]
-        percentile_value = np.quantile(var_layer, q)
-        mask_layer = var_layer < percentile_value
+    if isinstance(variance, list):
+
+        for layer in range(len(variance)):
+            var_layer = variance[layer]
+            percentile_value = sorted(var_layer)[:int(len(var_layer) * q + 0.5)][-1]
+            mask_layer = var_layer < percentile_value
+
+            mask_list.append(mask_layer)
+    else:
+        percentile_value = sorted(variance)[:int(len(variance) * q + 0.5)][-1]
+        mask_layer = variance <= percentile_value
 
         mask_list.append(mask_layer)
 
@@ -189,7 +219,6 @@ def compute_mask_convergence(var_list, q):
 
 
 def get_gradient_weights(model, data_x):
-
     batch_size = 2048
     loss = model.layers[-2].output
 
@@ -292,7 +321,6 @@ def apply_mask_to_weights(nn_weights_list, list_indices_hidden):
 
 
 def apply_mask_and_add_noise(nn_weights_list, list_mask, seed):
-
     count = 0
     depth = count * 2
     for layer in range(len(list_mask)):
@@ -320,7 +348,6 @@ def apply_mask_and_add_noise(nn_weights_list, list_mask, seed):
 
 def transplant_neurons(fittest_weights, weakest_weights, indices_neurons_transplant, indices_neurons_to_remove,
                        layer, depth):
-
     for index in range(3):
         if index == 0:
             # order the columns
@@ -377,7 +404,6 @@ def arithmetic_crossover(network_one, network_two, t=0.5):
 
 
 def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, safe_mutation=[]):
-
     t = 0.5
     if crossover == "noise_0.1":
         t = 0.9
@@ -398,7 +424,6 @@ def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, 
 
 
 def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold):
-
     mask_list = []
     for corr_matrix in corr_matrices_list:
         max_corr_list = []
@@ -408,7 +433,7 @@ def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold
             max_corr_list.append(corr[-2])
 
         if crossover == "noise_low_corr":
-            mask_array = np.asarray(max_corr_list) <= np.quantile(max_corr_list, 1-threshold)
+            mask_array = np.asarray(max_corr_list) <= np.quantile(max_corr_list, 1 - threshold)
         elif crossover == "noise_high_corr":
             mask_array = np.asarray(max_corr_list) >= np.quantile(max_corr_list, threshold)
 
@@ -420,16 +445,13 @@ def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold
 
 
 def scale_fittest_parent(fittest_weights):
-
-    fittest_weights = fittest_weights/np.sqrt(2)
+    fittest_weights = fittest_weights / np.sqrt(2)
 
     return fittest_weights
 
 
 def load_model_long_string(best_initial_id, work_id, epoch):
-
-    model = load_model("parents_trained/model_" + best_initial_id + "_epoch_" + str(epoch+1) + "_" + str(work_id) + ".hd5")
+    model = load_model(
+        "parents_trained/model_" + best_initial_id + "_epoch_" + str(epoch + 1) + "_" + str(work_id) + ".hd5")
 
     return model
-
-
