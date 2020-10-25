@@ -12,12 +12,13 @@ def unpickle(file):
     return data_dict
 
 
-def load_mnist():
+def load_mnist(flatten=True):
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     x_train, x_test = x_train / 255.0, x_test / 255.0
 
-    x_train = np.reshape(x_train, (x_train.shape[0], 28 * 28))
-    x_test = np.reshape(x_test, (x_test.shape[0], 28 * 28))
+    if flatten:
+        x_train = np.reshape(x_train, (x_train.shape[0], 28 * 28))
+        x_test = np.reshape(x_test, (x_test.shape[0], 28 * 28))
 
     return x_train, x_test, y_train, y_test
 
@@ -53,8 +54,7 @@ def load_cifar(flatten=True):
 
 
 def partition_classes(x_train, x_test, y_train, y_test):
-
-    cut_off = int(len(np.unique(y_train))/4)
+    cut_off = int(len(np.unique(y_train)) / 4)
 
     mask_train = np.squeeze(y_train >= cut_off)
     mask_test = np.squeeze(y_test >= cut_off)
@@ -72,35 +72,9 @@ def partition_classes(x_train, x_test, y_train, y_test):
     return x_train_s1, y_train_s1, x_test_s1, y_test_s1, x_train_s2, y_train_s2, x_test_s2, y_test_s2
 
 
-def add_noise(parent_weights, seed, t=0.5, sensitivity_vector=None, scaling_mutation_method=[]):
-    upper_limit = 2
-    lower_limit = 1 / upper_limit
+def get_hidden_layers(model, data_x, batch_size):
+    data_x = data_x[:batch_size]
 
-    mutation_scaling = 1
-    if "safe" in scaling_mutation_method:
-        sensitivity_vector = (upper_limit - lower_limit) * ((sensitivity_vector - np.min(sensitivity_vector)) /
-                                                            (np.max(sensitivity_vector) - np.min(
-                                                                sensitivity_vector))) + lower_limit
-        mutation_scaling = 1 / sensitivity_vector
-    elif "unsafe" in scaling_mutation_method:
-        sensitivity_vector = (upper_limit - lower_limit) * ((sensitivity_vector - np.min(sensitivity_vector)) /
-                                                            (np.max(sensitivity_vector) - np.min(
-                                                                sensitivity_vector))) + lower_limit
-        mutation_scaling = sensitivity_vector
-
-    np.random.seed(seed)
-
-    scale_factor = np.sqrt(1 / (np.power(t, 2) + np.power(1 - t, 2)))
-    mean_parent, std_parent = 0.0, np.std(parent_weights)
-
-    weight_noise = np.random.normal(loc=mean_parent, scale=std_parent, size=parent_weights.shape)
-    weight_noise = weight_noise * mutation_scaling
-    parent_weights = (t * parent_weights + (1 - t) * weight_noise) * scale_factor
-
-    return parent_weights
-
-
-def get_hidden_layers(model, data_x):
     def keras_function_layer(model_layer, data):
         hidden_func = keras.backend.function(model.layers[0].input, model_layer.output)
         result = hidden_func([data])
@@ -108,9 +82,11 @@ def get_hidden_layers(model, data_x):
         return result
 
     hidden_layers_list = []
-    for index in range(len(model.layers) - 2):
-        hidden_layer = keras_function_layer(model.layers[index], data_x)
-        hidden_layers_list.append(hidden_layer)
+    for index in range(len(model.layers)):
+        if isinstance(model.layers[index], keras.layers.convolutional.Conv2D) or isinstance(model.layers[index],
+                                                                                            keras.layers.Dense):
+            hidden_layer = keras_function_layer(model.layers[index], data_x)
+            hidden_layers_list.append(hidden_layer)
 
     return hidden_layers_list
 
@@ -126,18 +102,6 @@ def get_gradients_hidden_layers(model, data_x, data_y):
     gradient_list = func([data_x, data_y])
 
     return gradient_list
-
-
-def get_magnitude_weights(weights_list):
-    return np.abs(np.array(weights_list))
-
-
-def get_movement_weights(weights_list, best_parent_string, work_id):
-    best_initial_model = load_model("parents_initial/" + best_parent_string + "_initial_" + str(work_id) + ".hd5")
-    best_initial_weights = best_initial_model.get_weights()
-    weight_movements = np.abs(np.array(weights_list) - np.array(best_initial_weights))
-
-    return weight_movements
 
 
 def compute_neurons_variance(activations):
@@ -235,23 +199,35 @@ def get_gradient_weights(model, data_x):
     return gradient_list
 
 
-def get_corr(hidden_representation_list_one, hidden_representation_list_two):
+def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_list_two):
     list_corr_matrices = []
 
-    for index in range(len(hidden_representation_list_one)):
-        hidden_representation_one = hidden_representation_list_one[index]
-        hidden_representation_two = hidden_representation_list_two[index]
+    for layer_id in range(len(hidden_representation_list_one) - 1):
 
-        n = hidden_representation_one.shape[1]
+        batch_size = hidden_representation_list_one[layer_id].shape[0]
+        size_activation_map = hidden_representation_list_one[layer_id].shape[1]
+        num_filters = hidden_representation_list_one[layer_id].shape[-1]
 
-        corr_matrix_nn = np.empty((n, n))
+        print(batch_size, size_activation_map, num_filters)
 
-        for i in range(n):
-            for j in range(n):
-                corr = np.corrcoef(hidden_representation_one[:, i], hidden_representation_two[:, j])[0, 1]
-                corr_matrix_nn[i, j] = corr
+        # draw a random value from each of the CNN filters
+        i_dim = np.random.choice(range(0, size_activation_map), batch_size)
+        j_dim = np.random.choice(range(0, size_activation_map), batch_size)
 
-        list_corr_matrices.append(corr_matrix_nn)
+        layer_one = []
+        layer_two = []
+        for index in range(batch_size):
+            layer_one.append(hidden_representation_list_one[layer_id][index][i_dim[index], j_dim[index], :])
+            layer_two.append(hidden_representation_list_two[layer_id][index][i_dim[index], j_dim[index], :])
+
+        layer_one = np.array(layer_one)
+        layer_two = np.array(layer_two)
+
+        cross_corr_matrix = np.corrcoef(layer_one, layer_two, rowvar=False)[num_filters:, :num_filters]
+        print(cross_corr_matrix.shape)
+
+        cross_corr_matrix[np.isnan(cross_corr_matrix)] = 1000
+        list_corr_matrices.append(cross_corr_matrix)
 
     return list_corr_matrices
 
@@ -297,53 +273,39 @@ def get_network_similarity(list_corr_matrices, list_ordered_indices_one, list_or
 
 
 # Algorithm 2
-def apply_mask_to_weights(nn_weights_list, list_indices_hidden):
-    count = 0
-    depth = count * 2
-    for layer in range(len(list_indices_hidden)):
+def permute_cnn(weights_list_copy, list_permutation):
+    depth = 0
+
+    for layer in range(len(list_permutation)):
+
         for index in range(3):
+            print(index + depth)
             if index == 0:
-                # order columns for weights
-                nn_weights_list[index + depth] = nn_weights_list[index + depth][:, list_indices_hidden[layer]]
+                # order filters
+                weights_list_copy[index + depth] = weights_list_copy[index + depth][:, :, :, list_permutation[layer]]
             elif index == 1:
-                nn_weights_list[index + depth] = nn_weights_list[index + depth][
-                    list_indices_hidden[layer]]  # order columns for bias
+                # order the biases
+                weights_list_copy[index + depth] = weights_list_copy[index + depth][list_permutation[layer]]
             elif index == 2:
-                # order rows
-                nn_weights_list[index + depth] = nn_weights_list[index + depth][list_indices_hidden[layer], :]
+                if (index + depth) != (len(weights_list_copy) - 1):
+                    # order channels
+                    weights_list_copy[index + depth] = weights_list_copy[index + depth][:, :, list_permutation[layer],
+                                                       :]
+                else:  # this is for the flattened fully connected layer
 
-        count += 1
-        depth = count * 2
+                    num_filters = len(list_permutation[layer])
+                    print(list_permutation[layer])
+                    weights_tmp = weights_list_copy[index + depth].copy()
+                    for i in range(num_filters):
+                        filter_id = list_permutation[layer][i]
+                        weights_list_copy[index + depth][[num_filters * j + i for j in range(num_filters)]] = \
+                            weights_tmp[[num_filters * j + filter_id for j in range(num_filters)]]
 
-    nn_weights_list = np.asarray(nn_weights_list)
+        depth = (layer + 1) * 2
 
-    return nn_weights_list
+    weights_list_copy = np.asarray(weights_list_copy)
 
-
-def apply_mask_and_add_noise(nn_weights_list, list_mask, seed):
-    count = 0
-    depth = count * 2
-    for layer in range(len(list_mask)):
-        for index in range(3):
-            if index == 0:
-                # noise the columns
-                nn_weights_list[index + depth][:, list_mask[layer]] = \
-                    add_noise(nn_weights_list[index + depth][:, list_mask[layer]], seed, 0.5)
-            elif index == 1:
-                # order columns for bias
-                nn_weights_list[index + depth][list_mask[layer]] = \
-                    add_noise(nn_weights_list[index + depth][list_mask[layer]], seed, 0.5)
-            elif index == 2:
-                # order rows
-                nn_weights_list[index + depth][list_mask[layer], :] = \
-                    add_noise(nn_weights_list[index + depth][list_mask[layer], :], seed, 0.5)
-
-        count += 1
-        depth = count * 2
-
-    nn_weights_list = np.asarray(nn_weights_list)
-
-    return nn_weights_list
+    return weights_list_copy
 
 
 def transplant_neurons(fittest_weights, weakest_weights, indices_neurons_transplant, indices_neurons_to_remove,
@@ -375,7 +337,7 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
         list_ordered_indices_one.append(indices_one)
         list_ordered_indices_two.append(indices_two)
 
-    similarity = get_network_similarity(list_corr_matrices, list_ordered_indices_one, list_ordered_indices_two)
+    # similarity = get_network_similarity(list_corr_matrices, list_ordered_indices_one, list_ordered_indices_two)
 
     # order the weight matrices
 
@@ -386,10 +348,10 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     else:
         weights_nn_one_copy = list(weights_one)
         weights_nn_two_copy = list(weights_two)
-        list_ordered_w_one = apply_mask_to_weights(weights_nn_one_copy, list_ordered_indices_one)
-        list_ordered_w_two = apply_mask_to_weights(weights_nn_two_copy, list_ordered_indices_two)
+        list_ordered_w_one = permute_cnn(weights_nn_one_copy, list_ordered_indices_one)
+        list_ordered_w_two = permute_cnn(weights_nn_two_copy, list_ordered_indices_two)
 
-    return list_ordered_w_one, list_ordered_w_two, similarity
+    return list_ordered_w_one, list_ordered_w_two
 
 
 def arithmetic_crossover(network_one, network_two, t=0.5):
@@ -401,57 +363,3 @@ def arithmetic_crossover(network_one, network_two, t=0.5):
         list_weights.append(averaged_weights)
 
     return list_weights
-
-
-def add_noise_to_fittest(best_parent, crossover, seed, sensitivity_vector=None, safe_mutation=[]):
-    t = 0.5
-    if crossover == "noise_0.1":
-        t = 0.9
-
-    mutation_scaling = None
-
-    # choose best parent
-    list_weights = []
-    for index in range(len(best_parent)):
-        if sensitivity_vector is not None:
-            mutation_scaling = sensitivity_vector[index]
-        parent_weights = best_parent[index]
-        parent_weights = add_noise(parent_weights, seed, t, mutation_scaling, safe_mutation)
-
-        list_weights.append(parent_weights)
-
-    return list_weights
-
-
-def corr_neurons(fittest_weights, corr_matrices_list, seed, crossover, threshold):
-    mask_list = []
-    for corr_matrix in corr_matrices_list:
-        max_corr_list = []
-        for i in range(corr_matrix.shape[0]):
-            corr = np.abs(corr_matrix[i, :])
-            corr.sort()
-            max_corr_list.append(corr[-2])
-
-        if crossover == "noise_low_corr":
-            mask_array = np.asarray(max_corr_list) <= np.quantile(max_corr_list, 1 - threshold)
-        elif crossover == "noise_high_corr":
-            mask_array = np.asarray(max_corr_list) >= np.quantile(max_corr_list, threshold)
-
-        mask_list.append(mask_array)
-
-    list_weights = apply_mask_and_add_noise(fittest_weights, mask_list, seed)
-
-    return list_weights
-
-
-def scale_fittest_parent(fittest_weights):
-    fittest_weights = fittest_weights / np.sqrt(2)
-
-    return fittest_weights
-
-
-def load_model_long_string(best_initial_id, work_id, epoch):
-    model = load_model(
-        "parents_trained/model_" + best_initial_id + "_epoch_" + str(epoch + 1) + "_" + str(work_id) + ".hd5")
-
-    return model

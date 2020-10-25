@@ -18,18 +18,19 @@ from utils import transplant_neurons
 from utils import get_gradients_hidden_layers
 from utils import get_hidden_layers
 from utils import compute_neurons_variance
-from utils import get_corr
+from utils import get_corr_cnn_filters
 from utils import crossover_method
 from utils import arithmetic_crossover
 
 from neural_models import CustomSaver
 from neural_models import model_keras
+from neural_models import keras_model_cnn
 from neural_models import linear_classifier_keras
 
 warnings.filterwarnings("ignore")
 
 
-def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id, data_struc, parallel="process"):
+def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id, data_struc):
     # shuffle input data here
     np.random.seed(work_id + 1)
     shuffle_list = np.arange(x_train.shape[0])
@@ -44,13 +45,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     print("FOR PAIR NUMBER " + str(work_id + 1))
 
-    # crossover_types = ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
-    # "naive_crossover", # "noise_low_corr", "noise_high_corr", "safe_mutation_gradient", "unsafe_mutation_gradient",
-    # "safe_mutation_magnitude", "unsafe_mutation_magnitude", "safe_mutation_movement", "unsafe_mutation_movement",
-    # "safe_mutation_convergence_neurons", "unsafe_mutation_convergence_neurons", "noise_0.5", "noise_0.1",
-    # "aligned_targeted_crossover_high_corr", "aligned_targeted_freeze_training_crossover", "fine_tune_fittest",
-    # "scale_fittest_parent"]
-
     # crossover_types = ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
     #                   "aligned_targeted_crossover_variance", "fine_tune_fittest"]
 
@@ -58,12 +52,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     vector_representation = "activation"  # "gradient" or "activation"
     result_list = []
-    total_training_epoch = 80
+    total_training_epoch = 2
     epoch_list = np.arange(0, total_training_epoch, 1)
 
-    model_full_dataset = model_keras(work_id, data)
-    model_one = model_keras(work_id + num_pairs, data)
-    model_two = model_keras(work_id + (2*num_pairs), data)
+    model_full_dataset = keras_model_cnn(work_id, data)
+    model_one = keras_model_cnn(work_id + num_pairs, data)
+    model_two = keras_model_cnn(work_id + (2 * num_pairs), data)
     model_one.save("parents_initial/parent_one_initial_" + str(work_id) + ".hd5")
     model_two.save("parents_initial/parent_two_initial_" + str(work_id) + ".hd5")
     weights_initial_one = model_one.get_weights()
@@ -101,41 +95,33 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         print("crossover method: " + crossover)
 
         if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
-                         "naive_crossover", "noise_low_corr", "noise_high_corr", "aligned_targeted_crossover_high_corr",
-                         "aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_variance",
-                         "feature_extraction_variance", "feature_extraction_random", "feature_extraction_low_corr",
-                         "feature_extraction_high_corr"]:
+                         "aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
+                         "aligned_targeted_crossover_variance", "feature_extraction_variance",
+                         "feature_extraction_random", "feature_extraction_low_corr", "feature_extraction_high_corr"]:
 
             if vector_representation == "activation":
-                list_hidden_representation_fittest = get_hidden_layers(model_one,
-                                                                       x_test)  # activation vector network one
-                list_hidden_representation_weakest = get_hidden_layers(model_two,
-                                                                       x_test)  # activation vector network two
-            elif vector_representation == "gradient":
-                list_hidden_representation_fittest = get_gradients_hidden_layers(model_one, x_test,
-                                                                                 y_test)  # gradient vector
-                list_hidden_representation_weakest = get_gradients_hidden_layers(model_two, x_test,
-                                                                                 y_test)  # gradient vector
-
-            if crossover not in ["noise_low_corr", "noise_high_corr"]:
-                list_corr_matrices = get_corr(list_hidden_representation_fittest, list_hidden_representation_weakest)
+                list_hidden_representation_one = get_hidden_layers(model_one, x_test, 1024)
+                list_hidden_representation_two = get_hidden_layers(model_two, x_test, 1024)
             else:
-                list_corr_matrices = get_corr(list_hidden_representation_fittest, list_hidden_representation_fittest)
+                list_hidden_representation_one = get_gradients_hidden_layers(model_one, x_test, y_test)
+                list_hidden_representation_two = get_gradients_hidden_layers(model_two, x_test, y_test)
+
+            list_corr_matrices = get_corr_cnn_filters(list_hidden_representation_one, list_hidden_representation_two)
 
         # based on the two parents
         if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
                          "naive_crossover"]:
-            fittest_weights, weakest_weights, parents_similarity = crossover_method(weights_nn_one, weights_nn_two,
-                                                                                    list_corr_matrices, crossover)
+            fittest_weights, weakest_weights = crossover_method(weights_nn_one, weights_nn_two,
+                                                                list_corr_matrices, crossover)
 
         elif crossover in ["feature_extraction_variance", "feature_extraction_random", "feature_extraction_low_corr",
                            "feature_extraction_high_corr"]:
 
             extracted_x_train_fittest = get_hidden_layers(model_one, x_train_s1)[-1]
-            extracted_x_test_fittest = list_hidden_representation_fittest[-1]
+            extracted_x_test_fittest = list_hidden_representation_one[-1]
 
             extracted_x_train_weakest = get_hidden_layers(model_two, x_train_s2)[-1]
-            extracted_x_test_weakest = list_hidden_representation_weakest[-1]
+            extracted_x_test_weakest = list_hidden_representation_one[-1]
 
             var_list_best_parent = compute_neurons_variance(extracted_x_test_fittest)[0]
             var_list_worst_parent = compute_neurons_variance(extracted_x_test_weakest)[0]
@@ -205,8 +191,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
             # first, functionally align the trained and initial networks
             list_corr_matrices_copy = list_corr_matrices.copy()
-            fittest_weights, weakest_weights, _ = crossover_method(weights_nn_one, weights_nn_two,
-                                                                   list_corr_matrices_copy, "safe_crossover")
+            fittest_weights, weakest_weights = crossover_method(weights_nn_one, weights_nn_two,
+                                                                list_corr_matrices_copy, "safe_crossover")
 
             fittest_model = model_keras(0, data)
             fittest_model.set_weights(fittest_weights)
@@ -218,7 +204,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             hidden_representation_weakest = get_hidden_layers(weakest_model, x_test)
 
             # get the reshuffled correlation matrix for the aligned networks
-            list_corr_matrices = get_corr(hidden_representation_fittest, hidden_representation_weakest)
+            list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
 
             var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
             var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
@@ -262,10 +248,10 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     list_corr_matrices[layer][index_neurons_to_remove] = self_correlation_with_constraint
 
                 list_corr_matrices_copy = list_corr_matrices.copy()
-                fittest_weights, weakest_weights, _ = crossover_method(fittest_weights,
-                                                                       weakest_weights,
-                                                                       list_corr_matrices_copy,
-                                                                       "safe_crossover")
+                fittest_weights, weakest_weights = crossover_method(fittest_weights,
+                                                                    weakest_weights,
+                                                                    list_corr_matrices_copy,
+                                                                    "safe_crossover")
 
         elif crossover in ["aligned_targeted_freeze_training_crossover"]:
 
@@ -301,20 +287,20 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 hidden_representation_fittest = get_hidden_layers(model_fittest, x_test)
                 hidden_representation_weakest = get_hidden_layers(model_weakest, x_test)
-                list_corr_matrices = get_corr(hidden_representation_fittest, hidden_representation_weakest)
+                list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
 
                 fittest_weights = model_fittest.get_weights()
                 weakest_weights = model_weakest.get_weights()
 
                 # functionally align the networks
                 list_corr_matrices_copy = list_corr_matrices.copy()
-                fittest_weights, weakest_weights, _ = crossover_method(fittest_weights, weakest_weights,
-                                                                       list_corr_matrices_copy, "safe_crossover")
+                fittest_weights, weakest_weights = crossover_method(fittest_weights, weakest_weights,
+                                                                    list_corr_matrices_copy, "safe_crossover")
 
                 # get the reshuffled correlation matrix for the aligned networks
                 hidden_representation_fittest = get_hidden_layers(fittest_model, x_test)
                 hidden_representation_weakest = get_hidden_layers(weakest_model, x_test)
-                list_corr_matrices = get_corr(hidden_representation_fittest, hidden_representation_weakest)
+                list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
 
                 var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
                 var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
@@ -342,17 +328,18 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     list_corr_matrices[layer][index_neurons_to_remove] = self_correlation_with_constraint
 
                 list_corr_matrices_copy = list_corr_matrices.copy()
-                fittest_weights, weakest_weights, _ = crossover_method(fittest_weights,
-                                                                       weakest_weights,
-                                                                       list_corr_matrices_copy,
-                                                                       "safe_crossover")
+                fittest_weights, weakest_weights = crossover_method(fittest_weights,
+                                                                    weakest_weights,
+                                                                    list_corr_matrices_copy,
+                                                                    "safe_crossover")
                 if layer < 2:
                     for index in range(depth, len(fittest_weights)):
                         # weight matrix
                         if index % 2 == 0:
                             fittest_weights[index] = np.random.normal(loc=0.0,
-                                                                      scale=np.sqrt(2 / (fittest_weights[index].shape[0] +
-                                                                                         fittest_weights[index].shape[1])),
+                                                                      scale=np.sqrt(
+                                                                          2 / (fittest_weights[index].shape[0] +
+                                                                               fittest_weights[index].shape[1])),
                                                                       size=fittest_weights[index].shape)
                         else:
                             fittest_weights[index] = np.zeros(fittest_weights[index].shape)
@@ -418,47 +405,44 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         keras.backend.clear_session()
 
     result_list.append(parent_full_dataset.history["val_loss"])
-    if parallel == "process":
-        data_struc[str(work_id) + "_performance"] = result_list
+
+    data_struc[str(work_id) + "_performance"] = result_list
 
     print("ten")
 
 
 if __name__ == "__main__":
 
-    data = "cifar100"
+    data = "cifar10"
 
     if data == "cifar10":
-        x_train, x_test, y_train, y_test = load_cifar()
+        x_train, x_test, y_train, y_test = load_cifar(False)
     elif data == "cifar100":
-        x_train, x_test, y_train, y_test = load_cifar_100()
+        x_train, x_test, y_train, y_test = load_cifar_100(False)
     elif data == "mnist":
-        x_train, x_test, y_train, y_test = load_mnist()
+        x_train, x_test, y_train, y_test = load_mnist(False)
 
-    parallel_method = "process"
+    num_processes = 1
 
-    if parallel_method == "process":
-        num_processes = 1
+    start = timer()
 
-        start = timer()
+    manager = multiprocessing.Manager()
+    return_dict = manager.dict()
 
-        manager = multiprocessing.Manager()
-        return_dict = manager.dict()
+    pair_list = [pair for pair in range(num_processes)]
 
-        pair_list = [pair for pair in range(num_processes)]
+    p = [multiprocessing.Process(target=crossover_offspring, args=(data, x_train, y_train, x_test, y_test,
+                                                                   pair_list, i,
+                                                                   return_dict)) for i in range(num_processes)]
 
-        p = [multiprocessing.Process(target=crossover_offspring, args=(data, x_train, y_train, x_test, y_test,
-                                                                       pair_list, i, return_dict,
-                                                                       parallel_method)) for i in range(num_processes)]
+    for proc in p:
+        proc.start()
+    for proc in p:
+        proc.join()
 
-        for proc in p:
-            proc.start()
-        for proc in p:
-            proc.join()
+    results = return_dict.values()
 
-        results = return_dict.values()
+    pickle.dump(results, open("crossover_results.pickle", "wb"))
 
-        pickle.dump(results, open("crossover_results.pickle", "wb"))
-
-        end = timer()
-        print(end - start)
+    end = timer()
+    print(end - start)
