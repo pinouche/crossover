@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 import pickle
 import keras
-from keras.models import load_model
+import copy
 
 
 # load data functions
@@ -104,20 +104,26 @@ def get_gradients_hidden_layers(model, data_x, data_y):
     return gradient_list
 
 
-def compute_neurons_variance(activations):
-    var_list = []
+def compute_neurons_variance(hidden_layers_list):
+    list_variance_filters = []
 
-    if isinstance(activations, list):
+    for layer_id in range(len(hidden_layers_list) - 1):
 
-        for layer in range(len(activations)):
-            activation_matrix = activations[layer]
-            neurons_variance = np.var(activation_matrix, axis=0)
-            var_list.append(neurons_variance)
-    else:
-        neurons_variance = np.var(activations, axis=0)
-        var_list.append(neurons_variance)
+        batch_size = hidden_layers_list[layer_id].shape[0]
+        size_activation_map = hidden_layers_list[layer_id].shape[1]
 
-    return var_list
+        # draw a random value from each of the CNN filters
+        i_dim = np.random.choice(range(0, size_activation_map), batch_size)
+        j_dim = np.random.choice(range(0, size_activation_map), batch_size)
+
+        layer_one = []
+        for index in range(batch_size):
+            layer_one.append(hidden_layers_list[layer_id][index][i_dim[index], j_dim[index], :])
+
+        variance = np.var(np.array(layer_one), axis=0)
+        list_variance_filters.append(variance)
+
+    return list_variance_filters
 
 
 def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices,
@@ -155,7 +161,6 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
                 max_corr = np.max(corr)
                 max_corr_list.append((max_corr, j))
         max_corr_list.sort()
-        print(max_corr_list)
         indices = [tuples[1] for tuples in max_corr_list[:number_of_neurons_to_replace]]
         neurons_indices_list_worst_parent.append(indices)
 
@@ -165,17 +170,10 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
 def compute_mask_convergence(variance, q):
     mask_list = []
 
-    if isinstance(variance, list):
-
-        for layer in range(len(variance)):
-            var_layer = variance[layer]
-            percentile_value = sorted(var_layer)[:int(len(var_layer) * q + 0.5)][-1]
-            mask_layer = var_layer < percentile_value
-
-            mask_list.append(mask_layer)
-    else:
-        percentile_value = sorted(variance)[:int(len(variance) * q + 0.5)][-1]
-        mask_layer = variance <= percentile_value
+    for layer in range(len(variance)):
+        var_layer = variance[layer]
+        percentile_value = sorted(var_layer)[:int(len(var_layer) * q + 0.5)][-1]
+        mask_layer = var_layer < percentile_value
 
         mask_list.append(mask_layer)
 
@@ -208,8 +206,6 @@ def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_l
         size_activation_map = hidden_representation_list_one[layer_id].shape[1]
         num_filters = hidden_representation_list_one[layer_id].shape[-1]
 
-        print(batch_size, size_activation_map, num_filters)
-
         # draw a random value from each of the CNN filters
         i_dim = np.random.choice(range(0, size_activation_map), batch_size)
         j_dim = np.random.choice(range(0, size_activation_map), batch_size)
@@ -224,7 +220,6 @@ def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_l
         layer_two = np.array(layer_two)
 
         cross_corr_matrix = np.corrcoef(layer_one, layer_two, rowvar=False)[num_filters:, :num_filters]
-        print(cross_corr_matrix.shape)
 
         cross_corr_matrix[np.isnan(cross_corr_matrix)] = 1000
         list_corr_matrices.append(cross_corr_matrix)
@@ -277,9 +272,7 @@ def permute_cnn(weights_list_copy, list_permutation):
     depth = 0
 
     for layer in range(len(list_permutation)):
-
         for index in range(3):
-            print(index + depth)
             if index == 0:
                 # order filters
                 weights_list_copy[index + depth] = weights_list_copy[index + depth][:, :, :, list_permutation[layer]]
@@ -294,35 +287,45 @@ def permute_cnn(weights_list_copy, list_permutation):
                 else:  # this is for the flattened fully connected layer
 
                     num_filters = len(list_permutation[layer])
-                    print(list_permutation[layer])
-                    weights_tmp = weights_list_copy[index + depth].copy()
+                    weights_tmp = copy.deepcopy(weights_list_copy[index + depth])
+                    activation_map_size = int(weights_tmp.shape[0] / num_filters)
+
                     for i in range(num_filters):
                         filter_id = list_permutation[layer][i]
-                        weights_list_copy[index + depth][[num_filters * j + i for j in range(num_filters)]] = \
-                            weights_tmp[[num_filters * j + filter_id for j in range(num_filters)]]
+                        weights_list_copy[index + depth][[num_filters * j + i for j in range(activation_map_size)]] = \
+                            weights_tmp[[num_filters * j + filter_id for j in range(activation_map_size)]]
 
         depth = (layer + 1) * 2
-
-    weights_list_copy = np.asarray(weights_list_copy)
 
     return weights_list_copy
 
 
-def transplant_neurons(fittest_weights, weakest_weights, indices_neurons_transplant, indices_neurons_to_remove,
-                       layer, depth):
+def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, indices_remove, depth):
     for index in range(3):
         if index == 0:
-            # order the columns
-            fittest_weights[index + depth][:, indices_neurons_to_remove[layer]] = \
-                weakest_weights[index + depth][:, indices_neurons_transplant[layer]]
+            # order filters
+            fittest_weights[index + depth][:, :, :, indices_remove] = weakest_weights[index + depth][:, :, :,
+                                                                      indices_transplant]
         elif index == 1:
-            # order columns for bias
-            fittest_weights[index + depth][indices_neurons_to_remove[layer]] = \
-                weakest_weights[index + depth][indices_neurons_transplant[layer]]
+            # order the biases
+            fittest_weights[index + depth][indices_remove] = weakest_weights[index + depth][indices_transplant]
         elif index == 2:
-            # order rows
-            fittest_weights[index + depth][indices_neurons_to_remove[layer], :] = \
-                weakest_weights[index + depth][indices_neurons_transplant[layer], :]
+            if (index + depth) != (len(fittest_weights) - 1):
+                # order channels
+                fittest_weights[index + depth][:, :, indices_remove, :] = weakest_weights[index + depth][:, :,
+                                                                          indices_transplant, :]
+            else:  # this is for the flattened fully connected layer
+
+                num_filters = 32
+                weights_tmp = copy.deepcopy(weakest_weights[index + depth])
+                activation_map_size = int(weights_tmp.shape[0] / num_filters)
+
+                for i in range(len(indices_transplant)):
+                    filter_id_transplant = indices_transplant[i]
+                    filter_id_remove = indices_remove[i]
+                    fittest_weights[index + depth][
+                        [num_filters * j + filter_id_remove for j in range(activation_map_size)]] = weights_tmp[
+                        [num_filters * j + filter_id_transplant for j in range(activation_map_size)]]
 
     return fittest_weights
 

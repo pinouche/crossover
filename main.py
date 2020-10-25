@@ -23,7 +23,6 @@ from utils import crossover_method
 from utils import arithmetic_crossover
 
 from neural_models import CustomSaver
-from neural_models import model_keras
 from neural_models import keras_model_cnn
 from neural_models import linear_classifier_keras
 
@@ -100,8 +99,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                          "feature_extraction_random", "feature_extraction_low_corr", "feature_extraction_high_corr"]:
 
             if vector_representation == "activation":
-                list_hidden_representation_one = get_hidden_layers(model_one, x_test, 1024)
-                list_hidden_representation_two = get_hidden_layers(model_two, x_test, 1024)
+                list_hidden_representation_one = get_hidden_layers(model_one, x_test, 2058)
+                list_hidden_representation_two = get_hidden_layers(model_two, x_test, 2058)
             else:
                 list_hidden_representation_one = get_gradients_hidden_layers(model_one, x_test, y_test)
                 list_hidden_representation_two = get_gradients_hidden_layers(model_two, x_test, y_test)
@@ -194,14 +193,14 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             fittest_weights, weakest_weights = crossover_method(weights_nn_one, weights_nn_two,
                                                                 list_corr_matrices_copy, "safe_crossover")
 
-            fittest_model = model_keras(0, data)
+            fittest_model = keras_model_cnn(0, data)
             fittest_model.set_weights(fittest_weights)
 
-            weakest_model = model_keras(0, data)
+            weakest_model = keras_model_cnn(0, data)
             weakest_model.set_weights(weakest_weights)
 
-            hidden_representation_fittest = get_hidden_layers(fittest_model, x_test)
-            hidden_representation_weakest = get_hidden_layers(weakest_model, x_test)
+            hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, 2058)
+            hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, 2058)
 
             # get the reshuffled correlation matrix for the aligned networks
             list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
@@ -267,8 +266,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 if layer > 0:
                     trainable_list[:layer] = [False] * len(trainable_list[:layer])
 
-                model_fittest = model_keras(0, data, trainable_list)
-                model_weakest = model_keras(0, data, trainable_list)
+                model_fittest = keras_model_cnn(0, data, trainable_list)
+                model_weakest = keras_model_cnn(0, data, trainable_list)
 
                 model_fittest.set_weights(fittest_weights)
                 model_weakest.set_weights(weakest_weights)
@@ -346,7 +345,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
             trainable_list = [False] * (number_of_hidden_layers + 1)
             trainable_list[-1] = True
-            model_fittest = model_keras(0, data, trainable_list)
+            model_fittest = keras_model_cnn(0, data, trainable_list)
 
             # reset the weights of the last linear layer (Glorot normal)
             fittest_weights[-1] = np.random.normal(loc=0.0, scale=np.sqrt(2 / (fittest_weights[-1].shape[0] +
@@ -380,12 +379,13 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 weights_crossover = fittest_weights.copy()
 
                 # fine tuning vs transfer learning with fixed lower layers
-                trainable_list = [True] * (len(model_one.layers) - 1)
+                num_trainable_layers = int((len(model_one.trainable_weights)/2)+0.5)
+                trainable_list = [True] * num_trainable_layers
                 if transfer_style == "fixed":
-                    trainable_list[:-1] = [False] * (len(trainable_list[:-1]))
+                    trainable_list[:-1] = [False] * (num_trainable_layers-1)
                     trainable_list[-1] = True
 
-                model_offspring = model_keras(0, data, trainable_list)
+                model_offspring = keras_model_cnn(0, data, trainable_list)
 
                 # reset the weights of the last linear layer (Glorot normal)
                 weights_crossover[-1] = np.random.normal(loc=0.0, scale=np.sqrt(2 / (weights_crossover[-1].shape[0] +
