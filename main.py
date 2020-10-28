@@ -51,16 +51,16 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     vector_representation = "activation"  # "gradient" or "activation"
     result_list = []
-    total_training_epoch = 2
+    total_training_epoch = 150
     epoch_list = np.arange(0, total_training_epoch, 1)
 
     model_full_dataset = keras_model_cnn(work_id, data)
     model_one = keras_model_cnn(work_id + num_pairs, data)
     model_two = keras_model_cnn(work_id + (2 * num_pairs), data)
-    model_one.save("parents_initial/parent_one_initial_" + str(work_id) + ".hd5")
-    model_two.save("parents_initial/parent_two_initial_" + str(work_id) + ".hd5")
-    weights_initial_one = model_one.get_weights()
-    weights_initial_two = model_two.get_weights()
+    # model_one.save("parents_initial/parent_one_initial_" + str(work_id) + ".hd5")
+    # model_two.save("parents_initial/parent_two_initial_" + str(work_id) + ".hd5")
+    # weights_initial_one = model_one.get_weights()
+    # weights_initial_two = model_two.get_weights()
 
     save_callback = CustomSaver(epoch_list, "parent_full", work_id)
     parent_full_dataset = model_full_dataset.fit(x_train, y_train, epochs=total_training_epoch, batch_size=512,
@@ -83,6 +83,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     for crossover in crossover_types:
 
+        print("crossover method: " + crossover)
+
         parent_one = load_model(
             "parents_trained/model_parent_one_epoch_" + str(best_epoch_parent_one) + "_" + str(work_id) + ".hd5")
         weights_nn_one = parent_one.get_weights()
@@ -91,16 +93,10 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             "parents_trained/model_parent_two_epoch_" + str(best_epoch_parent_two) + "_" + str(work_id) + ".hd5")
         weights_nn_two = parent_two.get_weights()
 
-        print("crossover method: " + crossover)
-
-        if crossover in ["safe_crossover", "unsafe_crossover", "orthogonal_crossover", "normed_crossover",
-                         "aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
-                         "aligned_targeted_crossover_variance", "feature_extraction_variance",
-                         "feature_extraction_random", "feature_extraction_low_corr", "feature_extraction_high_corr"]:
-
+        if crossover in ["aligned_targeted_crossover_low_corr"]:
             if vector_representation == "activation":
-                list_hidden_representation_one = get_hidden_layers(model_one, x_test, 2058)
-                list_hidden_representation_two = get_hidden_layers(model_two, x_test, 2058)
+                list_hidden_representation_one = get_hidden_layers(model_one, x_test, 1024)
+                list_hidden_representation_two = get_hidden_layers(model_two, x_test, 1024)
             else:
                 list_hidden_representation_one = get_gradients_hidden_layers(model_one, x_test, y_test)
                 list_hidden_representation_two = get_gradients_hidden_layers(model_two, x_test, y_test)
@@ -199,8 +195,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             weakest_model = keras_model_cnn(0, data)
             weakest_model.set_weights(weakest_weights)
 
-            hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, 2058)
-            hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, 2058)
+            hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, 1024)
+            hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, 1024)
 
             # get the reshuffled correlation matrix for the aligned networks
             list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
@@ -407,8 +403,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     result_list.append(parent_full_dataset.history["val_loss"])
 
     data_struc[str(work_id) + "_performance"] = result_list
-
-    print("ten")
 
 
 if __name__ == "__main__":

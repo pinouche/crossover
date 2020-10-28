@@ -161,6 +161,7 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
                 max_corr = np.max(corr)
                 max_corr_list.append((max_corr, j))
         max_corr_list.sort()
+        print(max_corr_list)
         indices = [tuples[1] for tuples in max_corr_list[:number_of_neurons_to_replace]]
         neurons_indices_list_worst_parent.append(indices)
 
@@ -221,7 +222,8 @@ def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_l
 
         cross_corr_matrix = np.corrcoef(layer_one, layer_two, rowvar=False)[num_filters:, :num_filters]
 
-        cross_corr_matrix[np.isnan(cross_corr_matrix)] = 1000
+        print(np.sum(np.isnan(cross_corr_matrix)))
+        cross_corr_matrix[np.isnan(cross_corr_matrix)] = 0
         list_corr_matrices.append(cross_corr_matrix)
 
     return list_corr_matrices
@@ -300,29 +302,29 @@ def permute_cnn(weights_list_copy, list_permutation):
     return weights_list_copy
 
 
-def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, indices_remove, depth):
+def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, indices_remove, layer, depth):
     for index in range(3):
         if index == 0:
             # order filters
-            fittest_weights[index + depth][:, :, :, indices_remove] = weakest_weights[index + depth][:, :, :,
-                                                                      indices_transplant]
+            fittest_weights[index + depth][:, :, :, indices_remove[layer]] = weakest_weights[index + depth][:, :, :,
+                                                                      indices_transplant[layer]]
         elif index == 1:
             # order the biases
-            fittest_weights[index + depth][indices_remove] = weakest_weights[index + depth][indices_transplant]
+            fittest_weights[index + depth][indices_remove[layer]] = weakest_weights[index + depth][indices_transplant[layer]]
         elif index == 2:
             if (index + depth) != (len(fittest_weights) - 1):
                 # order channels
-                fittest_weights[index + depth][:, :, indices_remove, :] = weakest_weights[index + depth][:, :,
-                                                                          indices_transplant, :]
+                fittest_weights[index + depth][:, :, indices_remove[layer], :] = weakest_weights[index + depth][:, :,
+                                                                          indices_transplant[layer], :]
             else:  # this is for the flattened fully connected layer
 
                 num_filters = 32
                 weights_tmp = copy.deepcopy(weakest_weights[index + depth])
                 activation_map_size = int(weights_tmp.shape[0] / num_filters)
 
-                for i in range(len(indices_transplant)):
-                    filter_id_transplant = indices_transplant[i]
-                    filter_id_remove = indices_remove[i]
+                for i in range(len(indices_transplant[layer])):
+                    filter_id_transplant = indices_transplant[layer][i]
+                    filter_id_remove = indices_remove[layer][i]
                     fittest_weights[index + depth][
                         [num_filters * j + filter_id_remove for j in range(activation_map_size)]] = weights_tmp[
                         [num_filters * j + filter_id_transplant for j in range(activation_map_size)]]
