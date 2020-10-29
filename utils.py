@@ -3,6 +3,7 @@ from scipy.optimize import linear_sum_assignment
 import pickle
 import keras
 import copy
+import random
 
 
 # load data functions
@@ -166,6 +167,23 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
         neurons_indices_list_worst_parent.append(indices)
 
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
+
+
+def match_random_filters(mask_convergence_best_parent, q):
+
+    filters_to_remove = []
+    filters_to_transplant = []
+
+    for conv_layer in mask_convergence_best_parent:
+        num_filters = len(conv_layer)
+        num_filters_to_change = int(num_filters*q)
+        indices_to_remove = random.sample(range(num_filters), num_filters_to_change)
+        indices_to_transplant = random.sample(range(num_filters), num_filters_to_change)
+
+        filters_to_remove.append(indices_to_remove)
+        filters_to_transplant.append(indices_to_transplant)
+
+    return filters_to_transplant, filters_to_remove
 
 
 def compute_mask_convergence(variance, q):
