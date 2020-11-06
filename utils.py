@@ -54,8 +54,9 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def partition_classes(x_train, x_test, y_train, y_test):
-    cut_off = int(len(np.unique(y_train)) / 4)
+def partition_classes(x_train, x_test, y_train, y_test, cut_off=0.5):
+
+    cut_off = int(len(np.unique(y_train))*cut_off)
 
     mask_train = np.squeeze(y_train >= cut_off)
     mask_test = np.squeeze(y_test >= cut_off)
@@ -386,3 +387,14 @@ def arithmetic_crossover(network_one, network_two, t=0.5):
         list_weights.append(averaged_weights)
 
     return list_weights
+
+
+def get_fittest_parent(model_one, model_two, model_one_performance, model_two_performance, switch):
+
+    # make sure that model_one is the fittest model
+    if np.min(model_one_performance) > np.min(model_two_performance):
+        model_one, model_two = model_two, model_one
+        model_one_performance, model_two_performance = model_two_performance, model_one_performance
+        switch = True
+
+    return model_one, model_two, model_one_performance, model_two_performance, switch

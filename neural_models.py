@@ -103,7 +103,7 @@ def model_keras(seed, data, trainable_list=[]):
 
 def keras_model_cnn(seed, data, trainable_list=[]):
 
-    num_trainable_layers = 7
+    num_trainable_layers = 5
     output_size = 10
     if data == "cifar100":
         output_size = 20
@@ -132,20 +132,11 @@ def keras_model_cnn(seed, data, trainable_list=[]):
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
-        keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[4], padding='same', input_shape=(32, 32, 3)),
-
-        keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[5], padding='same'),
-
-        keras.layers.MaxPooling2D(2, 2),
-        keras.layers.Dropout(0.2),
-
         keras.layers.Flatten(),
 
         # output layer
         keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                           trainable=trainable_list[6], kernel_initializer=initializer),
+                           trainable=trainable_list[4], kernel_initializer=initializer),
 
         keras.layers.Activation(keras.activations.softmax)
     ])
