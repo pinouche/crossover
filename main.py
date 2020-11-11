@@ -54,10 +54,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     print("FOR PAIR NUMBER " + str(work_id + 1))
 
     crossover_types = ["aligned_targeted_crossover_low_corr",
-                       "aligned_targeted_crossover_high_corr",
-                       "aligned_targeted_crossover_variance",
-                       "aligned_targeted_crossover_variance",
-                       "fine_tune_parent"]
+                       "aligned_targeted_crossover_variance"]
 
     result_list = []
     epoch_list = np.arange(0, total_training_epoch, 1)
@@ -169,73 +166,81 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         if crossover in ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
                          "aligned_targeted_crossover_variance", "aligned_targeted_crossover_random"]:
 
-            # first, functionally align the trained and initial networks
-            list_corr_matrices_copy = copy.deepcopy(list_corr_matrices)
-            fittest_weights, weakest_weights = crossover_method(weights_nn_one, weights_nn_two,
-                                                                list_corr_matrices_copy, "safe_crossover")
+            different_safety_weights_list = []
 
-            fittest_model = keras_model_cnn(0, data)
-            fittest_model.set_weights(fittest_weights)
+            for safety_level in ["safe_crossover", "naive_crossover"]:
 
-            weakest_model = keras_model_cnn(0, data)
-            weakest_model.set_weights(weakest_weights)
-
-            hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, batch_size)
-            hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, batch_size)
-
-            # get the reshuffled correlation matrix for the aligned networks
-            list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
-
-            var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
-            var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
-
-            q_fittest = 0.5
-            q_worst = q_fittest
-            if crossover == "aligned_targeted_crossover_variance":
-                q_worst = 1 - q_fittest
-
-            mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, q_fittest)
-            mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, q_worst)
-
-            # this function identifies neurons from the weaker parent
-            corr_wanted = "low"
-            if crossover == "aligned_targeted_crossover_high_corr":
-                corr_wanted = "high"
-
-            list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
-                mask_convergence_best_parent,
-                mask_convergence_worst_parent,
-                list_corr_matrices, corr_wanted)
-
-            if crossover == "aligned_targeted_crossover_random":
-                list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(mask_convergence_best_parent,
-                                                                                          q_fittest)
-
-            depth = 0
-
-            for layer in range(len(list_neurons_to_transplant)):
-                # transplant layer by layer and order neurons after the transplant
-                fittest_weights = transplant_neurons(fittest_weights, weakest_weights,
-                                                     list_neurons_to_transplant, list_neurons_to_remove, layer, depth)
-
-                depth = (layer + 1) * 2
-
-                # modify the correlation matrix to reflect transplants and align the new layer in fittest weight with
-                # the layer in weakest weights (i.e. match the transplanted neurons with each other).
-
-                for index in range(len(list_neurons_to_transplant[layer])):
-                    index_neurons_to_transplant = list_neurons_to_transplant[layer][index]
-                    index_neurons_to_remove = list_neurons_to_remove[layer][index]
-
-                    self_correlation_with_constraint = [-10000] * list_corr_matrices[layer].shape[1]
-                    self_correlation_with_constraint[index_neurons_to_transplant] = 0
-                    list_corr_matrices[layer][index_neurons_to_remove] = self_correlation_with_constraint
-
+                # first, functionally align the trained and initial networks
                 list_corr_matrices_copy = copy.deepcopy(list_corr_matrices)
-                fittest_weights, weakest_weights = crossover_method(fittest_weights,
-                                                                    weakest_weights,
-                                                                    list_corr_matrices_copy,
-                                                                    "safe_crossover")
+                fittest_weights, weakest_weights = copy.deepcopy(weights_nn_one), copy.deepcopy(weights_nn_two)
+
+                fittest_weights, weakest_weights = crossover_method(fittest_weights, weakest_weights,
+                                                                    list_corr_matrices_copy, safety_level)
+
+                fittest_model = keras_model_cnn(0, data)
+                fittest_model.set_weights(fittest_weights)
+
+                weakest_model = keras_model_cnn(0, data)
+                weakest_model.set_weights(weakest_weights)
+
+                hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, batch_size)
+                hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, batch_size)
+
+                # get the reshuffled correlation matrix for the aligned networks
+                list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
+
+                var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
+                var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
+
+                q_fittest = 0.5
+                q_worst = q_fittest
+                if crossover == "aligned_targeted_crossover_variance":
+                    q_worst = 1 - q_fittest
+
+                mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, q_fittest)
+                mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, q_worst)
+
+                # this function identifies neurons from the weaker parent
+                corr_wanted = "low"
+                if crossover == "aligned_targeted_crossover_high_corr":
+                    corr_wanted = "high"
+
+                list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
+                    mask_convergence_best_parent,
+                    mask_convergence_worst_parent,
+                    list_corr_matrices, corr_wanted)
+
+                if crossover == "aligned_targeted_crossover_random":
+                    list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(mask_convergence_best_parent,
+                                                                                              q_fittest)
+
+                depth = 0
+
+                for layer in range(len(list_neurons_to_transplant)):
+                    # transplant layer by layer and order neurons after the transplant
+                    fittest_weights = transplant_neurons(fittest_weights, weakest_weights,
+                                                         list_neurons_to_transplant, list_neurons_to_remove, layer, depth)
+
+                    depth = (layer + 1) * 2
+
+                    # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
+                    # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
+
+                    for index in range(len(list_neurons_to_transplant[layer])):
+                        index_neurons_to_transplant = list_neurons_to_transplant[layer][index]
+                        index_neurons_to_remove = list_neurons_to_remove[layer][index]
+
+                        self_correlation_with_constraint = [-10000] * list_corr_matrices[layer].shape[1]
+                        self_correlation_with_constraint[index_neurons_to_transplant] = 0
+                        list_corr_matrices[layer][index_neurons_to_remove] = self_correlation_with_constraint
+
+                    list_corr_matrices_copy = copy.deepcopy(list_corr_matrices)
+                    fittest_weights, weakest_weights = crossover_method(fittest_weights,
+                                                                        weakest_weights,
+                                                                        list_corr_matrices_copy,
+                                                                        safety_level)
+
+                different_safety_weights_list.append(fittest_weights)
 
         elif crossover in ["aligned_targeted_freeze_training_crossover"]:
 
@@ -349,35 +354,31 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             result_list.append(list_performance)
 
         elif crossover == "large_subset_fine_tune":
+            different_safety_weights_list = []
             fittest_weights = copy.deepcopy(weights_nn_one)
+            different_safety_weights_list.append(fittest_weights)
 
         elif crossover == "fine_tune_parent":
+            different_safety_weights_list = []
             if ~mix_full_networks:
                 fittest_weights = copy.deepcopy(weights_nn_one)
             else:
                 fittest_weights = copy.deepcopy(weights_nn_full)
 
+            different_safety_weights_list.append(fittest_weights)
+
         if crossover in ["aligned_targeted_crossover_high_corr", "aligned_targeted_crossover_low_corr",
                          "aligned_targeted_crossover_variance", "aligned_targeted_crossover_random",
                          "large_subset_fine_tune", "fine_tune_parent"]:
 
-            # "fine_tune" or "fixed"
-            for transfer_style in ["fine_tune"]:
-                print(transfer_style)
+            for fittest_weights in different_safety_weights_list:
 
                 weights_crossover = copy.deepcopy(fittest_weights)
 
-                # fine tuning vs transfer learning with fixed lower layers
-                # num_trainable_layers = int((len(model_one.trainable_weights) / 2) + 0.5)
-                num_trainable_layers = 5
+                num_trainable_layers = 7
                 trainable_list = [True] * num_trainable_layers
 
                 model_offspring = keras_model_cnn(0, data, trainable_list)
-
-                # reset the weights of the last linear layer (Glorot normal)
-                #weights_crossover[-1] = np.random.normal(loc=0.0, scale=np.sqrt(2 / (weights_crossover[-1].shape[0] +
-                #                                                                     weights_crossover[-1].shape[1])),
-                #                                         size=weights_crossover[-1].shape)
 
                 model_offspring.set_weights(weights_crossover)
                 model_information_offspring = model_offspring.fit(x_train, y_train,
@@ -398,7 +399,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
 if __name__ == "__main__":
 
-    data = "cifar10"
+    data = "cifar100"
 
     if data == "cifar10":
         x_train, x_test, y_train, y_test = load_cifar(False)
