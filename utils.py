@@ -55,8 +55,7 @@ def load_cifar(flatten=True):
 
 
 def partition_classes(x_train, x_test, y_train, y_test, cut_off=0.5):
-
-    cut_off = int(len(np.unique(y_train))*cut_off)
+    cut_off = int(len(np.unique(y_train)) * cut_off)
 
     mask_train = np.squeeze(y_train >= cut_off)
     mask_test = np.squeeze(y_test >= cut_off)
@@ -91,19 +90,6 @@ def get_hidden_layers(model, data_x, batch_size):
             hidden_layers_list.append(hidden_layer)
 
     return hidden_layers_list
-
-
-def get_gradients_hidden_layers(model, data_x, data_y):
-    y_true = keras.Input(shape=(1,))
-    loss = keras.backend.categorical_crossentropy(y_true, model.output)
-    model_layers = [layer.output for layer in model.layers[:-2]]
-
-    gradients = keras.backend.gradients(loss, model_layers)
-    func = keras.backend.function([model.inputs, y_true], gradients)
-
-    gradient_list = func([data_x, data_y])
-
-    return gradient_list
 
 
 def compute_neurons_variance(hidden_layers_list):
@@ -171,13 +157,12 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
 
 
 def match_random_filters(mask_convergence_best_parent, q):
-
     filters_to_remove = []
     filters_to_transplant = []
 
     for conv_layer in mask_convergence_best_parent:
         num_filters = len(conv_layer)
-        num_filters_to_change = int(num_filters*q)
+        num_filters_to_change = int(num_filters * q)
         indices_to_remove = random.sample(range(num_filters), num_filters_to_change)
         indices_to_transplant = random.sample(range(num_filters), num_filters_to_change)
 
@@ -198,23 +183,6 @@ def compute_mask_convergence(variance, q):
         mask_list.append(mask_layer)
 
     return mask_list
-
-
-def get_gradient_weights(model, data_x):
-    batch_size = 2048
-    loss = model.layers[-2].output
-
-    trainable_weights_list = model.trainable_weights
-    gradients = keras.backend.gradients(loss, trainable_weights_list)
-    get_gradients = keras.backend.function(model.inputs, gradients)
-
-    gradient_list = []
-    for index in range(batch_size):
-        gradient_list.append(get_gradients([np.expand_dims(data_x[index, :], axis=0)]))
-
-    gradient_list = np.mean(np.abs(np.array(gradient_list)), axis=0)
-
-    return gradient_list
 
 
 def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_list_two):
@@ -270,24 +238,6 @@ def bipartite_matching(corr_matrix_nn, crossover="unsafe_crossover"):
     return list_neurons_x, list_neurons_y
 
 
-def get_network_similarity(list_corr_matrices, list_ordered_indices_one, list_ordered_indices_two):
-    list_meta = []
-
-    for layer_num in range(len(list_corr_matrices)):
-        list_corr = []
-        for index in range(len(list_ordered_indices_one)):
-            i = list_ordered_indices_one[layer_num][index]
-            j = list_ordered_indices_two[layer_num][index]
-            corr = np.abs(list_corr_matrices[layer_num][i][j])
-            list_corr.append(corr)
-
-        list_meta.append(np.mean(list_corr))
-
-    similarity = np.mean(list_meta)
-
-    return similarity
-
-
 # Algorithm 2
 def permute_cnn(weights_list_copy, list_permutation):
     depth = 0
@@ -326,15 +276,16 @@ def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, ind
         if index == 0:
             # order filters
             fittest_weights[index + depth][:, :, :, indices_remove[layer]] = weakest_weights[index + depth][:, :, :,
-                                                                      indices_transplant[layer]]
+                                                                             indices_transplant[layer]]
         elif index == 1:
             # order the biases
-            fittest_weights[index + depth][indices_remove[layer]] = weakest_weights[index + depth][indices_transplant[layer]]
+            fittest_weights[index + depth][indices_remove[layer]] = weakest_weights[index + depth][
+                indices_transplant[layer]]
         elif index == 2:
             if (index + depth) != (len(fittest_weights) - 1):
                 # order channels
                 fittest_weights[index + depth][:, :, indices_remove[layer], :] = weakest_weights[index + depth][:, :,
-                                                                          indices_transplant[layer], :]
+                                                                                 indices_transplant[layer], :]
             else:  # this is for the flattened fully connected layer
 
                 num_filters = 32
@@ -352,24 +303,21 @@ def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, ind
 
 
 def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
-    list_ordered_indices_one = []
-    list_ordered_indices_two = []
-    for index in range(len(list_corr_matrices)):
-        corr_matrix_nn = list_corr_matrices[index]
-
-        indices_one, indices_two = bipartite_matching(corr_matrix_nn, crossover)
-        list_ordered_indices_one.append(indices_one)
-        list_ordered_indices_two.append(indices_two)
-
-    # similarity = get_network_similarity(list_corr_matrices, list_ordered_indices_one, list_ordered_indices_two)
-
-    # order the weight matrices
-
     if crossover == "naive":
         list_ordered_w_one = list(weights_one)
         list_ordered_w_two = list(weights_two)
 
     else:
+
+        list_ordered_indices_one = []
+        list_ordered_indices_two = []
+        for index in range(len(list_corr_matrices)):
+            corr_matrix_nn = list_corr_matrices[index]
+
+            indices_one, indices_two = bipartite_matching(corr_matrix_nn, crossover)
+            list_ordered_indices_one.append(indices_one)
+            list_ordered_indices_two.append(indices_two)
+
         weights_nn_one_copy = list(weights_one)
         weights_nn_two_copy = list(weights_two)
         list_ordered_w_one = permute_cnn(weights_nn_one_copy, list_ordered_indices_one)
@@ -378,19 +326,7 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     return list_ordered_w_one, list_ordered_w_two
 
 
-def arithmetic_crossover(network_one, network_two, t=0.5):
-    scale_factor = np.sqrt(1 / (np.power(t, 2) + np.power(1 - t, 2)))
-
-    list_weights = []
-    for index in range(len(network_one)):
-        averaged_weights = (t * network_one[index] + (1 - t) * network_two[index]) * scale_factor
-        list_weights.append(averaged_weights)
-
-    return list_weights
-
-
 def get_fittest_parent(model_one, model_two, model_one_performance, model_two_performance, switch):
-
     # make sure that model_one is the fittest model
     if np.min(model_one_performance) > np.min(model_two_performance):
         model_one, model_two = model_two, model_one
