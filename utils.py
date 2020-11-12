@@ -114,44 +114,50 @@ def compute_neurons_variance(hidden_layers_list):
     return list_variance_filters
 
 
-def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_corr_matrices,
-                                 corr_wanted="low"):
+def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_cross_corr,
+                                 list_self_corr, q):
+
     neurons_indices_list_worst_parent = []
     indices_neurons_non_converged_best_parent_list = []
 
-    # want those that have converged in worst parent
-    mask_convergence_worst_parent = [~mask for mask in mask_convergence_worst_parent]
-
-    for index in range(len(list_corr_matrices)):
+    for index in range(len(list_cross_corr)):
 
         mask_best_parent = mask_convergence_best_parent[index]
         mask_worst_parent = mask_convergence_worst_parent[index]
-        number_of_neurons_to_replace = min(np.sum(mask_best_parent), np.sum(mask_worst_parent))
-        indices_neurons_non_converged_best_parent = [index for index in range(len(mask_best_parent)) if
-                                                     mask_best_parent[index]]
 
-        # choose randomly the indices of neurons to replace from the non-converged neurons in the best parent
-        if corr_wanted == "low":
-            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[
-                                                        :number_of_neurons_to_replace]
-        elif corr_wanted == "high":
-            indices_neurons_non_converged_best_parent = indices_neurons_non_converged_best_parent[
-                                                        -number_of_neurons_to_replace:]
+        self_corr = list_self_corr[index]
+        self_corr = np.abs(self_corr)
+        np.fill_diagonal(self_corr, -0.1)
 
-        indices_neurons_non_converged_best_parent_list.append(indices_neurons_non_converged_best_parent)
+        num_neurons_to_remove = int(self_corr.shape[0] * q)
+        list_neurons_remove = []
+        for _ in range(num_neurons_to_remove):
+            index_remove = np.argmax(np.max(self_corr, axis=1))
+            self_corr = np.delete(self_corr, index_remove, 0)
+            self_corr = np.delete(self_corr, index_remove, 1)
 
-        corr_matrix = list_corr_matrices[index][~mask_best_parent]
+            list_neurons_remove.append(index_remove)
+
+        indices_neurons_to_remove = [index for index in range(len(mask_best_parent)) if (mask_best_parent[index] or
+                                                                                         index in list_neurons_remove)]
+        num_neurons_to_remove = len(indices_neurons_to_remove)
+
+        bool_idx = np.ones(len(mask_best_parent), dtype=bool)
+        bool_idx[indices_neurons_to_remove] = False
+        corr_matrix = list_cross_corr[index][bool_idx]
 
         max_corr_list = []
         for j in range(corr_matrix.shape[1]):
-            if mask_worst_parent[j]:
+            if ~mask_worst_parent[j]:
                 corr = np.abs(corr_matrix[:, j])
                 max_corr = np.max(corr)
                 max_corr_list.append((max_corr, j))
         max_corr_list.sort()
         print(max_corr_list)
-        indices = [tuples[1] for tuples in max_corr_list[:number_of_neurons_to_replace]]
+        indices = [tuples[1] for tuples in max_corr_list[:num_neurons_to_remove]]
+
         neurons_indices_list_worst_parent.append(indices)
+        indices_neurons_non_converged_best_parent_list.append(indices_neurons_to_remove[:len(indices)])
 
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
@@ -172,13 +178,12 @@ def match_random_filters(mask_convergence_best_parent, q):
     return filters_to_transplant, filters_to_remove
 
 
-def compute_mask_convergence(variance, q):
+def compute_mask_convergence(variance, epsilon):
     mask_list = []
 
     for layer in range(len(variance)):
         var_layer = variance[layer]
-        percentile_value = sorted(var_layer)[:int(len(var_layer) * q + 0.5)][-1]
-        mask_layer = var_layer < percentile_value
+        mask_layer = var_layer <= epsilon
 
         mask_list.append(mask_layer)
 
