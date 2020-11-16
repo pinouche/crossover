@@ -8,12 +8,19 @@ class CustomSaver(keras.callbacks.Callback):
         self.work_id = work_id
 
     def on_epoch_end(self, epoch, logs={}):
-        if epoch+1 in self.epoch_list:
-            self.model.save("parents_trained/model_" + self.parent_id + "_epoch_" + str(epoch+1) + "_" + str(self.work_id) + ".hd5")
+        if epoch + 1 in self.epoch_list:
+            self.model.save("parents_trained/model_" + self.parent_id + "_epoch_" + str(epoch + 1) + "_" + str(
+                self.work_id) + ".hd5")
+
+
+def lr_scheduler(epoch, learning_rate=0.1, lr_drop=20):
+    new_lr = learning_rate * (0.5 ** (epoch // lr_drop))
+    reduce_lr = keras.callbacks.LearningRateScheduler(new_lr)
+
+    return reduce_lr
 
 
 def linear_classifier_keras(seed, input_size, data):
-
     # for mnist and cifar10
     output_size = 10
     if data == "cifar100":
@@ -36,107 +43,38 @@ def linear_classifier_keras(seed, input_size, data):
     return model
 
 
-def model_keras(seed, data, trainable_list=[]):
-
-    if data == "mnist":
-        input_size = 784
-        hidden_size = 512
-        output_size = 10
-        num_layers = 2
-
-        if len(trainable_list) == 0:
-            trainable_list = [True] * num_layers
-
-        initializer = keras.initializers.glorot_normal(seed=seed)
-
-        model = keras.models.Sequential([
-
-            keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
-                               trainable=trainable_list[0], kernel_initializer=initializer, input_shape=(input_size,)),
-            # output layer
-            keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                               trainable=trainable_list[1], kernel_initializer=initializer),
-
-            keras.layers.Activation(keras.activations.softmax)
-        ])
-
-    elif data == "cifar10" or data == "cifar100":
-        input_size = 3072
-        hidden_size = 256
-        num_layers = 4
-
-        output_size = 10
-        if data == "cifar100":
-            output_size = 20
-
-        if len(trainable_list) == 0:
-            trainable_list = [True] * num_layers
-
-        initializer = keras.initializers.glorot_normal(seed=seed)
-
-        model = keras.models.Sequential([
-
-            keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
-                               trainable=trainable_list[0], kernel_initializer=initializer, input_shape=(input_size,)),
-
-            keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
-                               trainable=trainable_list[1], kernel_initializer=initializer),
-
-            keras.layers.Dense(hidden_size, activation=keras.activations.selu, use_bias=True,
-                               trainable=trainable_list[2], kernel_initializer=initializer),
-            # output layer
-            keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                               trainable=trainable_list[3], kernel_initializer=initializer),
-
-            keras.layers.Activation(keras.activations.softmax)
-        ])
-
-    else:
-        raise Exception("wrong dataset")
-
-    adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
-    model.compile(optimizer=adam, loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy', 'sparse_categorical_crossentropy'])
-
-    return model
-
-
-def keras_model_cnn(seed, data, trainable_list=[]):
-
-    num_trainable_layers = 7
+def keras_model_cnn(seed, data):
+    input_shape = (32, 32, 3)
     output_size = 10
     if data == "cifar100":
         output_size = 20
-
-    if len(trainable_list) == 0:
-        trainable_list = [True] * num_trainable_layers
 
     initializer = keras.initializers.glorot_normal(seed=seed)
 
     model = keras.models.Sequential([
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[0], padding='same', input_shape=(32, 32, 3)),
+                            padding='same', input_shape=input_shape),
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[1], padding='same'),
+                            padding='same'),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[2], padding='same', input_shape=(32, 32, 3)),
+                            padding='same'),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[3], padding='same'),
+                            padding='same'),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[4], padding='same', input_shape=(32, 32, 3)),
+                            padding='same'),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            trainable=trainable_list[5], padding='same'),
+                            padding='same'),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
@@ -145,12 +83,131 @@ def keras_model_cnn(seed, data, trainable_list=[]):
 
         # output layer
         keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                           trainable=trainable_list[6], kernel_initializer=initializer),
+                           kernel_initializer=initializer),
 
         keras.layers.Activation(keras.activations.softmax)
     ])
 
     optimizer = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
+    model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy', 'sparse_categorical_crossentropy'])
+
+    return model
+
+
+# Build the network of vgg-16 with dropout and weight decay as described in the original paper.
+def keras_vgg(seed, data):
+    input_shape = (32, 32, 3)
+    weight_decay = 0.0005
+    initializer = keras.initializers.glorot_normal(seed=seed)
+
+    output_size = 10
+    if data == "cifar100":
+        output_size = 20
+
+    model = keras.models.Sequential([
+
+        keras.layers.Conv2D(64, (3, 3), activation='relu', kernel_initializer=initializer, padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay), input_shape=input_shape),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.3),
+
+        keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+
+        keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(128, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+
+        keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(256, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+
+        keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+
+        keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+        keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+        keras.layers.Dropout(0.4),
+
+        keras.layers.Conv2D(512, (3, 3), activation='relu', padding='same',
+                            kernel_regularizer=keras.regularizers.l2(weight_decay),
+                            kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+
+        keras.layers.MaxPooling2D(pool_size=(2, 2)),
+        keras.layers.Dropout(0.5),
+
+        keras.layers.Flatten(),
+        keras.layers.Dense(512, activation='relu', kernel_regularizer=keras.regularizers.l2(weight_decay),
+                           kernel_initializer=initializer),
+        keras.layers.BatchNormalization(),
+
+        keras.layers.Dropout(0.5),
+
+        # output layer
+        keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
+                           kernel_initializer=initializer),
+        keras.layers.Activation(keras.activations.softmax)
+
+    ])
+
+    # optimizer
+    learning_rate = 0.1
+    lr_decay = 1e-6
+    optimizer = keras.optimizers.SGD(lr=learning_rate, decay=lr_decay, momentum=0.9, nesterov=True)
     model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy',
                   metrics=['accuracy', 'sparse_categorical_crossentropy'])
 

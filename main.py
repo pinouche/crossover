@@ -23,9 +23,12 @@ from utils import compute_neurons_variance
 from utils import match_random_filters
 from utils import get_corr_cnn_filters
 from utils import crossover_method
+from utils import compute_q_values
 
 from neural_models import CustomSaver
+from neural_models import lr_scheduler
 from neural_models import keras_model_cnn
+from neural_models import keras_vgg
 
 warnings.filterwarnings("ignore")
 
@@ -41,7 +44,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # program hyperparameters
     fittest_parent, weakest_parent = "parent_one", "parent_two"
     mix_full_networks = True
-    total_training_epoch = 20
+    total_training_epoch = 2
     batch_size = 2048  # batch_size to compute the activation maps
 
     if not mix_full_networks:
@@ -171,8 +174,13 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 list_cross_corr_copy = copy.deepcopy(list_cross_corr)
                 fittest_weights, weakest_weights = copy.deepcopy(weights_nn_one), copy.deepcopy(weights_nn_two)
 
-                fittest_weights, weakest_weights = crossover_method(fittest_weights, weakest_weights,
-                                                                    list_cross_corr_copy, safety_level)
+                list_ordered_indices_one, list_ordered_indices_two, fittest_weights, weakest_weights = crossover_method(
+                    fittest_weights, weakest_weights, list_cross_corr_copy, safety_level)
+
+                # compute the q values for each layer (we use the same q values for naive alignment too)
+                if safety_level == "safe_crossover":
+                    q_values_list = compute_q_values(list_ordered_indices_one, list_ordered_indices_two,
+                                                     list_cross_corr_copy)
 
                 fittest_model = keras_model_cnn(0, data)
                 fittest_model.set_weights(fittest_weights)
@@ -194,16 +202,14 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, epsilon)
                 mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, epsilon)
 
-                # q controls the proportion of neurons which we want to transplant
-                q = 0.5
                 list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
                     mask_convergence_best_parent,
                     mask_convergence_worst_parent,
-                    list_corr_matrices, list_self_corr, q)
+                    list_corr_matrices, list_self_corr, q_values_list)
 
                 if crossover == "aligned_targeted_crossover_random":
                     list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(mask_convergence_best_parent,
-                                                                                              q)
+                                                                                              q_values_list)
 
                 depth = 0
 
@@ -226,7 +232,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
 
                     list_cross_corr_copy = copy.deepcopy(list_cross_corr)
-                    fittest_weights, weakest_weights = crossover_method(fittest_weights,
+                    _, _, fittest_weights, weakest_weights = crossover_method(fittest_weights,
                                                                         weakest_weights,
                                                                         list_cross_corr_copy,
                                                                         safety_level)
@@ -240,7 +246,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         elif crossover == "fine_tune_parent":
             different_safety_weights_list = []
-            if ~mix_full_networks:
+            if mix_full_networks:
                 fittest_weights = copy.deepcopy(weights_nn_one)
             else:
                 fittest_weights = copy.deepcopy(weights_nn_full)
@@ -254,10 +260,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 weights_crossover = copy.deepcopy(fittest_weights)
 
-                num_trainable_layers = 7
-                trainable_list = [True] * num_trainable_layers
-
-                model_offspring = keras_model_cnn(0, data, trainable_list)
+                model_offspring = keras_model_cnn(0, data)
 
                 model_offspring.set_weights(weights_crossover)
                 model_information_offspring = model_offspring.fit(x_train, y_train,
