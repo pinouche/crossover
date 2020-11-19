@@ -24,6 +24,7 @@ from utils import match_random_filters
 from utils import get_corr_cnn_filters
 from utils import crossover_method
 from utils import compute_q_values
+from utils import mean_ensemble
 
 from neural_models import CustomSaver
 from neural_models import lr_scheduler
@@ -35,7 +36,11 @@ warnings.filterwarnings("ignore")
 
 def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id, data_struc):
     # shuffle input data here
-    np.random.seed(work_id)
+
+    num_pairs = len(pair_list)
+    print("FOR PAIR NUMBER " + str(work_id + 1))
+
+    np.random.seed(work_id + 1)
     shuffle_list = np.arange(x_train.shape[0])
     np.random.shuffle(shuffle_list)
     x_train = x_train[shuffle_list]
@@ -45,18 +50,22 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     fittest_parent, weakest_parent = "parent_one", "parent_two"
     mix_full_networks = True
     total_training_epoch = 2
-    batch_size = 2048  # batch_size to compute the activation maps
+    batch_size_activation = 2048  # batch_size to compute the activation maps
+    batch_size_sgd = 128
+    cut_off = 0.2
+    num_trainable_layer = 7
 
     if not mix_full_networks:
-        cut_off = 0.2
         x_train_s1, y_train_s1, x_test_s1, y_test_s1, x_train_s2, y_train_s2, x_test_s2, y_test_s2 = \
             partition_classes(x_train, x_test, y_train, y_test, cut_off)
 
-    num_pairs = len(pair_list)
-    print("FOR PAIR NUMBER " + str(work_id + 1))
-
-    crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
-                       "fine_tune_parent"]
+    if mix_full_networks:
+        crossover_types = ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]
+        # crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
+        #                   "mean_ensemble"]
+    else:
+        crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
+                           "large_subset_fine_tune"]
 
     result_list = []
     epoch_list = np.arange(0, total_training_epoch, 1)
@@ -76,34 +85,38 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         if mix_full_networks:
 
             # train 2 parent networks on the full training data and use the fittest parent as benchmark
+
             save_callback = CustomSaver(epoch_list, "parent_one", work_id)
-            model_information_parent_one = model_one.fit(x_train, y_train, epochs=total_training_epoch, batch_size=512,
-                                                         verbose=True,
-                                                         validation_data=(x_test, y_test), callbacks=[save_callback])
+            model_information_parent_one = model_one.fit(x_train, y_train, epochs=total_training_epoch,
+                                                         batch_size=batch_size_sgd,
+                                                         verbose=2, validation_data=(x_test, y_test),
+                                                         callbacks=[save_callback])
 
             save_callback = CustomSaver(epoch_list, "parent_two", work_id)
-            model_information_parent_two = model_two.fit(x_train, y_train, epochs=total_training_epoch, batch_size=512,
-                                                         verbose=True,
-                                                         validation_data=(x_test, y_test), callbacks=[save_callback])
+            model_information_parent_two = model_two.fit(x_train, y_train, epochs=total_training_epoch,
+                                                         batch_size=batch_size_sgd,
+                                                         verbose=2, validation_data=(x_test, y_test),
+                                                         callbacks=[save_callback])
 
         else:
             # train a network on full data as benchmark and 2 other networks on subsets of the training data
+            # reduce_lr = keras.callbacks.LearningRateScheduler(lr_scheduler)
+
             save_callback = CustomSaver(epoch_list, "parent_full", work_id)
-            model_full_dataset = model_full_dataset.fit(x_train, y_train, epochs=total_training_epoch, batch_size=512,
-                                                        verbose=True,
-                                                        validation_data=(x_test, y_test), callbacks=[save_callback])
+            model_full_dataset = model_full_dataset.fit(x_train, y_train, epochs=total_training_epoch,
+                                                        batch_size=batch_size_sgd,
+                                                        verbose=2, validation_data=(x_test, y_test),
+                                                        callbacks=[save_callback])
 
             save_callback = CustomSaver(epoch_list, "parent_one", work_id)
             model_information_parent_one = model_one.fit(x_train_s1, y_train_s1, epochs=total_training_epoch,
-                                                         batch_size=512,
-                                                         verbose=True,
+                                                         batch_size=batch_size_sgd, verbose=2,
                                                          validation_data=(x_test_s1, y_test_s1),
                                                          callbacks=[save_callback])
 
             save_callback = CustomSaver(epoch_list, "parent_two", work_id)
             model_information_parent_two = model_two.fit(x_train_s2, y_train_s2, epochs=total_training_epoch,
-                                                         batch_size=512,
-                                                         verbose=True,
+                                                         batch_size=batch_size_sgd, verbose=2,
                                                          validation_data=(x_test_s2, y_test_s2),
                                                          callbacks=[save_callback])
 
@@ -138,13 +151,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         print("crossover method: " + crossover)
 
-        if not mix_full_networks:
-            best_epoch_fittest_parent = np.arg(loss_history_parent_full)
-            model_full_dataset = load_model(
-                "parents_trained/model_parent_full_epoch_" + str(best_epoch_fittest_parent) + "_" + str(
-                    work_id) + ".hd5")
-            weights_nn_full = model_full_dataset.get_weights()
-
         model_one = load_model(
             "parents_trained/model_" + fittest_parent + "_epoch_" + str(best_epoch_parent_one) + "_"
             + str(work_id) + ".hd5")
@@ -157,66 +163,91 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         # compute hidden representation (e.g. activation maps for CNNs), on a batch of input
 
-        list_hidden_representation_one = get_hidden_layers(model_one, x_test, batch_size)
-        list_hidden_representation_two = get_hidden_layers(model_two, x_test, batch_size)
+        list_hidden_representation_one = get_hidden_layers(model_one, x_test, batch_size_activation)
+        list_hidden_representation_two = get_hidden_layers(model_two, x_test, batch_size_activation)
         # self-correlation matrix
         list_self_corr = get_corr_cnn_filters(list_hidden_representation_one, list_hidden_representation_one)
         # cross-correlation matrix
         list_cross_corr = get_corr_cnn_filters(list_hidden_representation_one, list_hidden_representation_two)
 
-        if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random"]:
+        if crossover in ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]:
 
             different_safety_weights_list = []
 
             for safety_level in ["safe_crossover", "naive_crossover"]:
 
-                # first, functionally align the trained and initial networks
-                list_cross_corr_copy = copy.deepcopy(list_cross_corr)
-                fittest_weights, weakest_weights = copy.deepcopy(weights_nn_one), copy.deepcopy(weights_nn_two)
-
-                list_ordered_indices_one, list_ordered_indices_two, fittest_weights, weakest_weights = crossover_method(
-                    fittest_weights, weakest_weights, list_cross_corr_copy, safety_level)
-
-                # compute the q values for each layer (we use the same q values for naive alignment too)
-                if safety_level == "safe_crossover":
-                    q_values_list = compute_q_values(list_ordered_indices_one, list_ordered_indices_two,
-                                                     list_cross_corr_copy)
-
-                fittest_model = keras_model_cnn(0, data)
-                fittest_model.set_weights(fittest_weights)
-
-                weakest_model = keras_model_cnn(0, data)
-                weakest_model.set_weights(weakest_weights)
-
-                hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, batch_size)
-                hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, batch_size)
-
-                # get the reshuffled correlation matrix for the aligned networks
-                list_corr_matrices = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
-
-                var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
-                var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
-
-                # epsilon controls the variance threshold for deciding whether a filter is noise or not
-                epsilon = 0.001
-                mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, epsilon)
-                mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, epsilon)
-
-                list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
-                    mask_convergence_best_parent,
-                    mask_convergence_worst_parent,
-                    list_corr_matrices, list_self_corr, q_values_list)
-
-                if crossover == "aligned_targeted_crossover_random":
-                    list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(mask_convergence_best_parent,
-                                                                                              q_values_list)
+                weights_parent = copy.deepcopy(weights_nn_one)
+                hidden_representation_parent = copy.deepcopy(list_hidden_representation_one)
 
                 depth = 0
 
-                for layer in range(len(list_neurons_to_transplant)):
+                for layer in range(num_trainable_layer):
+
+                    trainable_list = [True] * num_trainable_layer
+
+                    if layer > 0:
+                        trainable_list[:layer] = [False] * layer
+
+                    print(trainable_list)
+
+                    # train the network in a freeze train setting
+                    model_offspring = keras_model_cnn(work_id + (3 * num_pairs), data, trainable_list)
+                    if layer > 0:
+                        model_offspring.set_weights(weights_offspring)
+                    model_information_offspring = model_offspring.fit(x_train, y_train, batch_size=batch_size_sgd,
+                                                                      epochs=int(
+                                                                          total_training_epoch / num_trainable_layer),
+                                                                      verbose=2, validation_data=(x_test, y_test))
+                    weights_offspring = model_offspring.get_weights()
+
+                    hidden_representation_offspring = get_hidden_layers(model_offspring, x_test, batch_size_activation)
+                    list_corr_matrices = get_corr_cnn_filters(hidden_representation_offspring,
+                                                              hidden_representation_parent)
+
+                    list_cross_corr_copy = copy.deepcopy(list_corr_matrices)
+                    list_ordered_indices_one, list_ordered_indices_two, weights_offspring, weights_parent = crossover_method(
+                        weights_parent, weights_offspring, list_cross_corr_copy, safety_level)
+
+                    model_parent = keras_model_cnn(0, data)
+                    model_parent.set_weights(weights_parent)
+
+                    model_offspring = keras_model_cnn(0, data)
+                    model_offspring.set_weights(weights_offspring)
+
+                    hidden_representation_offspring = get_hidden_layers(model_offspring, x_test, batch_size_activation)
+                    hidden_representation_parent = get_hidden_layers(model_parent, x_test, batch_size_activation)
+                    list_cross_corr = get_corr_cnn_filters(hidden_representation_offspring,
+                                                           hidden_representation_parent)
+
+                    var_list_best_parent = compute_neurons_variance(hidden_representation_offspring)
+                    var_list_worst_parent = compute_neurons_variance(hidden_representation_parent)
+
+                    # q_variance controls the variance threshold for deciding whether a filter is noise or not
+                    q_variance = 0.1
+                    mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, q_variance)
+                    mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, q_variance)
+
+                    # compute the q values for each layer (we use the same q values for naive alignment too)
+                    if safety_level == "safe_crossover":
+                        q_values_list = compute_q_values(list_ordered_indices_two, list_cross_corr)
+
+                        if not mix_full_networks:
+                            q_values_list = [cut_off] * len(list_cross_corr)
+
+                    list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
+                        mask_convergence_best_parent,
+                        mask_convergence_worst_parent,
+                        list_cross_corr, list_self_corr, q_values_list)
+
+                    if crossover == "aligned_targeted_crossover_random":
+                        list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(
+                            mask_convergence_best_parent,
+                            q_values_list)
+
                     # transplant layer by layer and order neurons after the transplant
-                    fittest_weights = transplant_neurons(fittest_weights, weakest_weights,
-                                                         list_neurons_to_transplant, list_neurons_to_remove, layer, depth)
+                    weights_offspring = transplant_neurons(weights_offspring, weakest_parent,
+                                                           list_neurons_to_transplant, list_neurons_to_remove, layer,
+                                                           depth)
 
                     depth = (layer + 1) * 2
 
@@ -231,11 +262,87 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         self_correlation_with_constraint[index_neurons_to_transplant] = 0
                         list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
 
-                    list_cross_corr_copy = copy.deepcopy(list_cross_corr)
+                    _, _, fittest_weights, weakest_weights = crossover_method(weights_offspring,
+                                                                              weights_parent,
+                                                                              list_cross_corr,
+                                                                              safety_level)
+
+                different_safety_weights_list.append(weights_offspring)
+
+        if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random"]:
+
+            different_safety_weights_list = []
+
+            for safety_level in ["safe_crossover", "naive_crossover"]:
+
+                # first, functionally align the trained and initial networks
+                list_cross_corr_copy = copy.deepcopy(list_cross_corr)
+                fittest_weights, weakest_weights = copy.deepcopy(weights_nn_one), copy.deepcopy(weights_nn_two)
+
+                list_ordered_indices_one, list_ordered_indices_two, fittest_weights, weakest_weights = crossover_method(
+                    fittest_weights, weakest_weights, list_cross_corr_copy, safety_level)
+
+                fittest_model = keras_model_cnn(0, data)
+                fittest_model.set_weights(fittest_weights)
+
+                weakest_model = keras_model_cnn(0, data)
+                weakest_model.set_weights(weakest_weights)
+
+                # get the reshuffled correlation matrix for the aligned networks
+                hidden_representation_fittest = get_hidden_layers(fittest_model, x_test, batch_size_activation)
+                hidden_representation_weakest = get_hidden_layers(weakest_model, x_test, batch_size_activation)
+                list_cross_corr = get_corr_cnn_filters(hidden_representation_fittest, hidden_representation_weakest)
+
+                var_list_best_parent = compute_neurons_variance(hidden_representation_fittest)
+                var_list_worst_parent = compute_neurons_variance(hidden_representation_weakest)
+
+                # q_variance controls the variance threshold for deciding whether a filter is noise or not
+                q_variance = 0.1
+                mask_convergence_best_parent = compute_mask_convergence(var_list_best_parent, q_variance)
+                mask_convergence_worst_parent = compute_mask_convergence(var_list_worst_parent, q_variance)
+
+                # compute the q values for each layer (we use the same q values for naive alignment too)
+                if safety_level == "safe_crossover":
+                    q_values_list = compute_q_values(list_ordered_indices_two, list_cross_corr)
+
+                    if not mix_full_networks:
+                        q_values_list = [cut_off] * len(list_cross_corr)
+
+                list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(
+                    mask_convergence_best_parent,
+                    mask_convergence_worst_parent,
+                    list_cross_corr, list_self_corr, q_values_list)
+
+                if crossover == "aligned_targeted_crossover_random":
+                    list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(
+                        mask_convergence_best_parent,
+                        q_values_list)
+
+                depth = 0
+
+                for layer in range(len(list_neurons_to_transplant)):
+                    # transplant layer by layer and order neurons after the transplant
+                    fittest_weights = transplant_neurons(fittest_weights, weakest_weights,
+                                                         list_neurons_to_transplant, list_neurons_to_remove, layer,
+                                                         depth)
+
+                    depth = (layer + 1) * 2
+
+                    # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
+                    # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
+
+                    for index in range(len(list_neurons_to_transplant[layer])):
+                        index_neurons_to_transplant = list_neurons_to_transplant[layer][index]
+                        index_neurons_to_remove = list_neurons_to_remove[layer][index]
+
+                        self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[1]
+                        self_correlation_with_constraint[index_neurons_to_transplant] = 0
+                        list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
+
                     _, _, fittest_weights, weakest_weights = crossover_method(fittest_weights,
-                                                                        weakest_weights,
-                                                                        list_cross_corr_copy,
-                                                                        safety_level)
+                                                                              weakest_weights,
+                                                                              list_cross_corr,
+                                                                              safety_level)
 
                 different_safety_weights_list.append(fittest_weights)
 
@@ -244,29 +351,25 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             fittest_weights = copy.deepcopy(weights_nn_one)
             different_safety_weights_list.append(fittest_weights)
 
-        elif crossover == "fine_tune_parent":
-            different_safety_weights_list = []
-            if mix_full_networks:
-                fittest_weights = copy.deepcopy(weights_nn_one)
-            else:
-                fittest_weights = copy.deepcopy(weights_nn_full)
+        elif crossover == "mean_ensemble":
+            loss = mean_ensemble(model_one, model_two, x_test, y_test)
 
-            different_safety_weights_list.append(fittest_weights)
+            result_list.append(loss)
 
         if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
-                         "large_subset_fine_tune", "fine_tune_parent"]:
+                         "large_subset_fine_tune"]:
 
             for fittest_weights in different_safety_weights_list:
-
                 weights_crossover = copy.deepcopy(fittest_weights)
 
                 model_offspring = keras_model_cnn(0, data)
 
                 model_offspring.set_weights(weights_crossover)
+                # reduce_lr = keras.callbacks.LearningRateScheduler(lr_scheduler)
                 model_information_offspring = model_offspring.fit(x_train, y_train,
-                                                                  epochs=int(total_training_epoch / 2),
-                                                                  batch_size=512,
-                                                                  verbose=True, validation_data=(x_test, y_test))
+                                                                  epochs=total_training_epoch,
+                                                                  batch_size=batch_size_sgd,
+                                                                  verbose=2, validation_data=(x_test, y_test))
 
                 list_performance = model_information_offspring.history["val_loss"]
 

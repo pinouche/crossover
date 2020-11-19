@@ -15,9 +15,8 @@ class CustomSaver(keras.callbacks.Callback):
 
 def lr_scheduler(epoch, learning_rate=0.1, lr_drop=20):
     new_lr = learning_rate * (0.5 ** (epoch // lr_drop))
-    reduce_lr = keras.callbacks.LearningRateScheduler(new_lr)
 
-    return reduce_lr
+    return new_lr
 
 
 def linear_classifier_keras(seed, input_size, data):
@@ -43,38 +42,43 @@ def linear_classifier_keras(seed, input_size, data):
     return model
 
 
-def keras_model_cnn(seed, data):
+def keras_model_cnn(seed, data, trainable_list=[]):
+
+    num_trainable_layers = 7
     input_shape = (32, 32, 3)
     output_size = 10
     if data == "cifar100":
         output_size = 20
+
+    if len(trainable_list) == 0:
+        trainable_list = [True] * num_trainable_layers
 
     initializer = keras.initializers.glorot_normal(seed=seed)
 
     model = keras.models.Sequential([
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same', input_shape=input_shape),
+                            padding='same', input_shape=input_shape, trainable=trainable_list[0]),
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same'),
+                            padding='same', trainable=trainable_list[1]),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same'),
+                            padding='same', trainable=trainable_list[2]),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same'),
+                            padding='same', trainable=trainable_list[3]),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same'),
+                            padding='same', trainable=trainable_list[4]),
 
         keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same'),
+                            padding='same', trainable=trainable_list[5]),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
@@ -83,7 +87,7 @@ def keras_model_cnn(seed, data):
 
         # output layer
         keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                           kernel_initializer=initializer),
+                           kernel_initializer=initializer, trainable=trainable_list[6]),
 
         keras.layers.Activation(keras.activations.softmax)
     ])

@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import log_loss, accuracy_score
+from scipy.special import softmax
 import pickle
 import keras
 import copy
@@ -181,12 +183,12 @@ def match_random_filters(mask_convergence_best_parent, q_value_list):
     return filters_to_transplant, filters_to_remove
 
 
-def compute_mask_convergence(variance, epsilon):
+def compute_mask_convergence(variance, q_variance):
     mask_list = []
 
     for layer in range(len(variance)):
         var_layer = variance[layer]
-        mask_layer = var_layer <= epsilon
+        mask_layer = var_layer <= np.quantile(var_layer, q_variance)
 
         mask_list.append(mask_layer)
 
@@ -217,7 +219,6 @@ def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_l
 
         cross_corr_matrix = np.corrcoef(layer_one, layer_two, rowvar=False)[num_filters:, :num_filters]
 
-        print(np.sum(np.isnan(cross_corr_matrix)))
         cross_corr_matrix[np.isnan(cross_corr_matrix)] = 0
         list_corr_matrices.append(cross_corr_matrix)
 
@@ -335,7 +336,7 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     return list_ordered_indices_one, list_ordered_indices_two, list_ordered_w_one, list_ordered_w_two
 
 
-def compute_q_values(list_ordered_indices_one, list_ordered_indices_two, list_cross_corr_copy):
+def compute_q_values(list_ordered_indices_two, list_cross_corr_copy):
 
     q_value_list = []
     for index in range(len(list_cross_corr_copy)):
@@ -347,6 +348,27 @@ def compute_q_values(list_ordered_indices_one, list_ordered_indices_two, list_cr
         q_value_list.append(q_value)
 
     return q_value_list
+
+
+def mean_ensemble(model_one, model_two, x_test, y_test):
+
+    def keras_function_layer(model, model_layer, data):
+        hidden_func = keras.backend.function(model.layers[0].input, model_layer.output)
+        result = hidden_func([data])
+
+        return result
+
+    logits_model_one = keras_function_layer(model_one, model_one.layers[-2], x_test)
+    logits_model_two = keras_function_layer(model_two, model_two.layers[-2], x_test)
+
+    ensemble_predictions = (logits_model_one + logits_model_two)/2
+    ensemble_predictions = softmax(ensemble_predictions)
+    class_prediction = np.argmax(ensemble_predictions, axis=1)
+
+    loss = log_loss(y_test, ensemble_predictions)
+    accuracy = accuracy_score(y_test, class_prediction)
+
+    return loss
 
 
 def get_fittest_parent(model_one, model_two, model_one_performance, model_two_performance, switch):
