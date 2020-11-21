@@ -116,8 +116,7 @@ def compute_neurons_variance(hidden_layers_list):
     return list_variance_filters
 
 
-def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_worst_parent, list_cross_corr,
-                                 list_self_corr, q_value_list):
+def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
 
     neurons_indices_list_worst_parent = []
     indices_neurons_non_converged_best_parent_list = []
@@ -126,14 +125,12 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
 
         print(q_value_list[index])
 
-        mask_best_parent = mask_convergence_best_parent[index]
-        mask_worst_parent = mask_convergence_worst_parent[index]
-
-        self_corr = list_self_corr[index]
+        self_corr = copy.deepcopy(list_self_corr[index])
         self_corr = np.abs(self_corr)
         np.fill_diagonal(self_corr, -0.1)
 
-        num_neurons_to_remove = int(self_corr.shape[0] * q_value_list[index])
+        num_filters = self_corr.shape[0]
+        num_neurons_to_remove = int(num_filters * q_value_list[index])
         list_neurons_remove = []
         for _ in range(num_neurons_to_remove):
             index_remove = np.argmax(np.max(self_corr, axis=1))
@@ -142,37 +139,33 @@ def identify_interesting_neurons(mask_convergence_best_parent, mask_convergence_
 
             list_neurons_remove.append(index_remove)
 
-        indices_neurons_to_remove = [index for index in range(len(mask_best_parent)) if (mask_best_parent[index] or
-                                                                                         index in list_neurons_remove)]
-        num_neurons_to_remove = len(indices_neurons_to_remove)
+        num_neurons_to_remove = len(list_neurons_remove)
 
-        bool_idx = np.ones(len(mask_best_parent), dtype=bool)
-        bool_idx[indices_neurons_to_remove] = False
-        corr_matrix = list_cross_corr[index][bool_idx]
+        bool_idx = np.ones(num_filters, dtype=bool)
+        bool_idx[list_neurons_remove] = False
+        corr_matrix = copy.deepcopy(list_cross_corr[index][bool_idx])
 
         max_corr_list = []
         for j in range(corr_matrix.shape[1]):
-            if ~mask_worst_parent[j]:
-                corr = np.abs(corr_matrix[:, j])
-                max_corr = np.max(corr)
-                max_corr_list.append((max_corr, j))
+            corr = np.abs(corr_matrix[:, j])
+            max_corr = np.max(corr)
+            max_corr_list.append((max_corr, j))
         max_corr_list.sort()
         print(max_corr_list)
         indices = [tuples[1] for tuples in max_corr_list[:num_neurons_to_remove]]
 
         neurons_indices_list_worst_parent.append(indices)
-        indices_neurons_non_converged_best_parent_list.append(indices_neurons_to_remove[:len(indices)])
+        indices_neurons_non_converged_best_parent_list.append(list_neurons_remove)
 
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
 
-def match_random_filters(mask_convergence_best_parent, q_value_list):
+def match_random_filters(q_value_list):
     filters_to_remove = []
     filters_to_transplant = []
 
-    for index in range(len(mask_convergence_best_parent)):
-        conv_layer = mask_convergence_best_parent[index]
-        num_filters = len(conv_layer)
+    for index in range(len(q_value_list)):
+        num_filters = len(q_value_list[index])
         num_filters_to_change = int(num_filters * q_value_list[index])
         indices_to_remove = random.sample(range(num_filters), num_filters_to_change)
         indices_to_transplant = random.sample(range(num_filters), num_filters_to_change)
@@ -183,16 +176,16 @@ def match_random_filters(mask_convergence_best_parent, q_value_list):
     return filters_to_transplant, filters_to_remove
 
 
-def compute_mask_convergence(variance, q_variance):
-    mask_list = []
-
-    for layer in range(len(variance)):
-        var_layer = variance[layer]
-        mask_layer = var_layer <= np.quantile(var_layer, q_variance)
-
-        mask_list.append(mask_layer)
-
-    return mask_list
+# def compute_mask_convergence(variance, q_variance):
+#     mask_list = []
+#
+#     for layer in range(len(variance)):
+#         var_layer = variance[layer]
+#         mask_layer = var_layer <= np.quantile(var_layer, q_variance)
+#
+#         mask_list.append(mask_layer)
+#
+#     return mask_list
 
 
 def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_list_two):
@@ -227,18 +220,19 @@ def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_l
 
 # cross correlation function for both bipartite matching (hungarian method)
 def bipartite_matching(corr_matrix_nn, crossover="unsafe_crossover"):
+    corr_matrix_nn_tmp = copy.deepcopy(corr_matrix_nn)
     if crossover == "unsafe_crossover":
-        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)
+        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
     elif crossover == "safe_crossover":
-        corr_matrix_nn *= -1  # default of linear_sum_assignement is to minimize cost, we want to max "cost"
-        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)
+        corr_matrix_nn_tmp *= -1  # default of linear_sum_assignement is to minimize cost, we want to max "cost"
+        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
     elif crossover == "orthogonal_crossover":
-        corr_matrix_nn = np.abs(corr_matrix_nn)
-        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)
+        corr_matrix_nn_tmp = np.abs(corr_matrix_nn_tmp)
+        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
     elif crossover == "normed_crossover":
-        corr_matrix_nn = np.abs(corr_matrix_nn)
-        corr_matrix_nn *= -1
-        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn)
+        corr_matrix_nn_tmp = np.abs(corr_matrix_nn_tmp)
+        corr_matrix_nn_tmp *= -1
+        list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
     elif crossover == "naive_crossover":
         list_neurons_x, list_neurons_y = list(range(corr_matrix_nn.shape[0])), list(range(corr_matrix_nn.shape[0]))
     else:
@@ -281,6 +275,7 @@ def permute_cnn(weights_list_copy, list_permutation):
 
 
 def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, indices_remove, layer, depth):
+
     for index in range(3):
         if index == 0:
             # order filters
@@ -336,15 +331,16 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     return list_ordered_indices_one, list_ordered_indices_two, list_ordered_w_one, list_ordered_w_two
 
 
-def compute_q_values(list_ordered_indices_two, list_cross_corr_copy):
+def compute_q_values(list_cross_corr_copy):
 
     q_value_list = []
     for index in range(len(list_cross_corr_copy)):
         corr = list_cross_corr_copy[index]
-        corr = corr[:, list_ordered_indices_two[index]]
 
+        print(np.diag(corr))
         similarity = np.mean(np.abs(np.diag(corr)))
-        q_value = -0.5*similarity+0.5
+        #q_value = -0.25*similarity+0.25
+        q_value = 0.25*similarity
         q_value_list.append(q_value)
 
     return q_value_list
