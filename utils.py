@@ -246,14 +246,14 @@ def permute_cnn(weights_list_copy, list_permutation):
     depth = 0
 
     for layer in range(len(list_permutation)):
-        for index in range(3):
+        for index in range(7):
             if index == 0:
                 # order filters
                 weights_list_copy[index + depth] = weights_list_copy[index + depth][:, :, :, list_permutation[layer]]
-            elif index == 1:
-                # order the biases
+            elif index in [1, 2, 3, 4, 5]:
+                # order the biases and the batch norm parameters
                 weights_list_copy[index + depth] = weights_list_copy[index + depth][list_permutation[layer]]
-            elif index == 2:
+            elif index == 6:
                 if (index + depth) != (len(weights_list_copy) - 1):
                     # order channels
                     weights_list_copy[index + depth] = weights_list_copy[index + depth][:, :, list_permutation[layer],
@@ -269,23 +269,23 @@ def permute_cnn(weights_list_copy, list_permutation):
                         weights_list_copy[index + depth][[num_filters * j + i for j in range(activation_map_size)]] = \
                             weights_tmp[[num_filters * j + filter_id for j in range(activation_map_size)]]
 
-        depth = (layer + 1) * 2
+        depth = (layer + 1) * 6
 
     return weights_list_copy
 
 
 def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, indices_remove, layer, depth):
 
-    for index in range(3):
+    for index in range(7):
         if index == 0:
             # order filters
             fittest_weights[index + depth][:, :, :, indices_remove[layer]] = weakest_weights[index + depth][:, :, :,
                                                                              indices_transplant[layer]]
-        elif index == 1:
-            # order the biases
+        elif index == [1, 2, 3, 4, 5]:
+            # order the biases and the batch norm parameters
             fittest_weights[index + depth][indices_remove[layer]] = weakest_weights[index + depth][
                 indices_transplant[layer]]
-        elif index == 2:
+        elif index == 6:
             if (index + depth) != (len(fittest_weights) - 1):
                 # order channels
                 fittest_weights[index + depth][:, :, indices_remove[layer], :] = weakest_weights[index + depth][:, :,
@@ -339,11 +339,42 @@ def compute_q_values(list_cross_corr_copy):
 
         print(np.diag(corr))
         similarity = np.mean(np.abs(np.diag(corr)))
-        #q_value = -0.25*similarity+0.25
-        q_value = 0.25*similarity
+        q_value = -0.5*similarity+0.5
+        #q_value = 0.5*similarity
         q_value_list.append(q_value)
 
     return q_value_list
+
+
+def reset_weights_layer(weights, layer):
+
+    # reset convolutional layers and batch norm parameters
+    count = 0
+    for index in range(layer*6, len(weights)-1):
+        
+        if count == 0:
+            fan_in = np.prod(weights[index].shape)
+            # He Normal
+            reinit_weights = np.random.normal(loc=0.0, scale=np.sqrt(2/fan_in), size=weights[index].shape)
+        
+        elif count in [1]:
+            reinit_weights = np.zeros(weights[index].shape)
+            
+        elif count in [2, 3, 4, 5]:
+            reinit_weights = weights[index]
+            
+        weights[index] = reinit_weights
+            
+        count += 1
+        
+        if index % 5 == 0:
+            count = 0
+
+    # reset dense layers
+    fan_in = np.prod(weights[-1].shape)
+    weights[-1] = np.random.normal(loc=0.0, scale=np.sqrt(2/fan_in), size=weights[-1].shape)
+
+    return weights
 
 
 def mean_ensemble(model_one, model_two, x_test, y_test):

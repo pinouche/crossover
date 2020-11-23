@@ -16,15 +16,16 @@ from utils import partition_classes
 from utils import get_fittest_parent
 
 # from utils import compute_mask_convergence
+# from utils import compute_neurons_variance
 from utils import identify_interesting_neurons
 from utils import transplant_neurons
 from utils import get_hidden_layers
-from utils import compute_neurons_variance
 from utils import match_random_filters
 from utils import get_corr_cnn_filters
 from utils import crossover_method
 from utils import compute_q_values
 from utils import mean_ensemble
+from utils import reset_weights_layer
 
 from neural_models import CustomSaver
 from neural_models import lr_scheduler
@@ -50,9 +51,9 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     fittest_parent, weakest_parent = "parent_one", "parent_two"
     num_trainable_layer = 7
     mix_full_networks = True
-    total_training_epoch = 20 * num_trainable_layer
+    total_training_epoch = 15*num_trainable_layer
     batch_size_activation = 2048  # batch_size to compute the activation maps
-    batch_size_sgd = 128
+    batch_size_sgd = 512
     cut_off = 0.2
 
     if not mix_full_networks:
@@ -61,7 +62,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     if mix_full_networks:
         crossover_types = ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]
-        # crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
+        #crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
         #                   "mean_ensemble"]
     else:
         crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
@@ -182,17 +183,20 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 for layer in range(num_trainable_layer):
 
-                    trainable_list = [True] * num_trainable_layer
+                    trainable_list = [True] * (num_trainable_layer*2-1)
 
-                    if layer > 1:
-                        trainable_list[:layer-1] = [False] * (layer-1)
+                    # freeze training
+                    #if layer > 1:
+                    #    trainable_list[:(layer-1)*2] = [False] * ((layer-1)*2)
 
                     print(trainable_list)
 
-                    # train the network in a freeze train setting
                     model_offspring = keras_model_cnn(work_id + (3 * num_pairs), data, trainable_list)
+
                     if layer > 0:
+                        weights_offspring = reset_weights_layer(weights_offspring, layer)
                         model_offspring.set_weights(weights_offspring)
+
                     model_information_offspring = model_offspring.fit(x_train, y_train, batch_size=batch_size_sgd,
                                                                       epochs=int(
                                                                           total_training_epoch / num_trainable_layer),
@@ -236,7 +240,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                            list_neurons_to_transplant, list_neurons_to_remove, layer,
                                                            depth)
 
-                    depth = (layer + 1) * 2
+                    depth = (layer + 1) * 6
 
                     # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
                     # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
@@ -301,7 +305,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                          list_neurons_to_transplant, list_neurons_to_remove, layer,
                                                          depth)
 
-                    depth = (layer + 1) * 2
+                    depth = (layer + 1) * 6
 
                     # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
                     # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
