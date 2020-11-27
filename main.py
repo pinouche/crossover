@@ -5,6 +5,7 @@ import warnings
 import pickle
 import os
 import copy
+from pympler.tracker import SummaryTracker
 
 from keras.models import load_model
 import keras
@@ -39,7 +40,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # shuffle input data here
 
     num_pairs = len(pair_list)
-    print("FOR PAIR NUMBER " + str(work_id + 1))
+    print("FOR PAIR NUMBER " + str(work_id))
 
     np.random.seed(work_id + 1)
     shuffle_list = np.arange(x_train.shape[0])
@@ -48,13 +49,13 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     y_train = y_train[shuffle_list]
 
     # program hyperparameters
-    fittest_parent, weakest_parent = "parent_one", "parent_two"
     num_trainable_layer = 7
     mix_full_networks = True
-    total_training_epoch = 15*num_trainable_layer
+    total_training_epoch = 25 * num_trainable_layer
     batch_size_activation = 2048  # batch_size to compute the activation maps
     batch_size_sgd = 512
     cut_off = 0.2
+    result_list = []
 
     if not mix_full_networks:
         x_train_s1, y_train_s1, x_test_s1, y_test_s1, x_train_s2, y_train_s2, x_test_s2, y_test_s2 = \
@@ -62,160 +63,76 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     if mix_full_networks:
         crossover_types = ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]
-        #crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
-        #                   "mean_ensemble"]
     else:
         crossover_types = ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
                            "large_subset_fine_tune"]
-
-    result_list = []
-    epoch_list = np.arange(0, total_training_epoch, 1)
-
-    model_full_dataset = keras_model_cnn(work_id, data)
-    model_one = keras_model_cnn(work_id + num_pairs, data)
-    model_two = keras_model_cnn(work_id + (2 * num_pairs), data)
-
-    if os.path.isfile("best_epochs/best_epoch_parent_one_" + str(work_id)):
-        print("loading existing weights...")
-        best_epoch_parent_one = pickle.load(open("best_epochs/best_epoch_parent_one_" + str(work_id), "rb"))
-        best_epoch_parent_two = pickle.load(open("best_epochs/best_epoch_parent_two_" + str(work_id), "rb"))
-        loss_history_parent_full = pickle.load(open("best_epochs/history_parent_full_" + str(work_id), "rb"))
-
-    else:
-
-        if mix_full_networks:
-
-            # train 2 parent networks on the full training data and use the fittest parent as benchmark
-
-            save_callback = CustomSaver(epoch_list, "parent_one", work_id)
-            model_information_parent_one = model_one.fit(x_train, y_train, epochs=total_training_epoch,
-                                                         batch_size=batch_size_sgd,
-                                                         verbose=2, validation_data=(x_test, y_test),
-                                                         callbacks=[save_callback])
-
-            save_callback = CustomSaver(epoch_list, "parent_two", work_id)
-            model_information_parent_two = model_two.fit(x_train, y_train, epochs=total_training_epoch,
-                                                         batch_size=batch_size_sgd,
-                                                         verbose=2, validation_data=(x_test, y_test),
-                                                         callbacks=[save_callback])
-
-        else:
-            # train a network on full data as benchmark and 2 other networks on subsets of the training data
-            # reduce_lr = keras.callbacks.LearningRateScheduler(lr_scheduler)
-
-            save_callback = CustomSaver(epoch_list, "parent_full", work_id)
-            model_full_dataset = model_full_dataset.fit(x_train, y_train, epochs=total_training_epoch,
-                                                        batch_size=batch_size_sgd,
-                                                        verbose=2, validation_data=(x_test, y_test),
-                                                        callbacks=[save_callback])
-
-            save_callback = CustomSaver(epoch_list, "parent_one", work_id)
-            model_information_parent_one = model_one.fit(x_train_s1, y_train_s1, epochs=total_training_epoch,
-                                                         batch_size=batch_size_sgd, verbose=2,
-                                                         validation_data=(x_test_s1, y_test_s1),
-                                                         callbacks=[save_callback])
-
-            save_callback = CustomSaver(epoch_list, "parent_two", work_id)
-            model_information_parent_two = model_two.fit(x_train_s2, y_train_s2, epochs=total_training_epoch,
-                                                         batch_size=batch_size_sgd, verbose=2,
-                                                         validation_data=(x_test_s2, y_test_s2),
-                                                         callbacks=[save_callback])
-
-        # loss history of the fittest parent: the best parent must be called model_one
-        if mix_full_networks:
-            model_one, model_two, model_one_history, model_two_history, switch = get_fittest_parent(model_one,
-                                                                                                    model_two,
-                                                                                                    model_information_parent_one.history[
-                                                                                                        "val_loss"],
-                                                                                                    model_information_parent_two.history[
-                                                                                                        "val_loss"],
-                                                                                                    False)
-
-            if switch:
-                fittest_parent, weakest_parent = "parent_two", "parent_one"
-
-            best_epoch_parent_one = np.argmin(model_one_history)
-            best_epoch_parent_two = np.argmin(model_two_history)
-
-            loss_history_parent_full = model_one_history
-
-        else:
-            loss_history_parent_full = model_full_dataset.history["val_loss"]
-            best_epoch_parent_one = np.argmin(model_information_parent_one.history["val_loss"])
-            best_epoch_parent_two = np.argmin(model_information_parent_two.history["val_loss"])
-
-        pickle.dump(loss_history_parent_full, open("best_epochs/history_parent_full_" + str(work_id), "wb"))
-        pickle.dump(best_epoch_parent_one, open("best_epochs/best_epoch_parent_one_" + str(work_id), "wb"))
-        pickle.dump(best_epoch_parent_two, open("best_epochs/best_epoch_parent_two_" + str(work_id), "wb"))
 
     for crossover in crossover_types:
 
         print("crossover method: " + crossover)
 
-        model_one = load_model(
-            "parents_trained/model_" + fittest_parent + "_epoch_" + str(best_epoch_parent_one) + "_"
-            + str(work_id) + ".hd5")
-        weights_nn_one = model_one.get_weights()
-
-        model_two = load_model(
-            "parents_trained/model_" + weakest_parent + "_epoch_" + str(best_epoch_parent_two) + "_"
-            + str(work_id) + ".hd5")
-        weights_nn_two = model_two.get_weights()
-
-        # compute hidden representation (e.g. activation maps for CNNs), on a batch of input
-
-        list_hidden_representation_one = get_hidden_layers(model_one, x_test, batch_size_activation)
-        list_hidden_representation_two = get_hidden_layers(model_two, x_test, batch_size_activation)
-        # self-correlation matrix
-        list_self_corr = get_corr_cnn_filters(list_hidden_representation_one, list_hidden_representation_one)
-        # cross-correlation matrix
-        list_cross_corr = get_corr_cnn_filters(list_hidden_representation_one, list_hidden_representation_two)
-
         if crossover in ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]:
 
-            for safety_level in ["safe_crossover", "naive_crossover"]:
+            q_values_list = [0] * (num_trainable_layer - 1)
+            list_cross_corr = [None] * (num_trainable_layer - 1)
 
-                weights_parent = copy.deepcopy(weights_nn_one)
-                model_parent = model_one
+            for safety_level in ["safe_crossover", "naive_crossover"]:
+                tracker = SummaryTracker()
+
+                print(safety_level)
 
                 loss_list = []
                 depth = 0
 
-                for layer in range(num_trainable_layer):
+                for layer in range(num_trainable_layer - 1):
 
-                    trainable_list = [True] * (num_trainable_layer*2-1)
+                    print("the layer number is: " + str(layer))
 
-                    # freeze training
-                    #if layer > 1:
-                    #    trainable_list[:(layer-1)*2] = [False] * ((layer-1)*2)
-
-                    print(trainable_list)
-
-                    model_offspring = keras_model_cnn(work_id + (3 * num_pairs), data, trainable_list)
+                    model_offspring_one = keras_model_cnn(work_id + num_pairs, data)
+                    model_offspring_two = keras_model_cnn(work_id + (2 * num_pairs), data)
 
                     if layer > 0:
-                        weights_offspring = reset_weights_layer(weights_offspring, layer)
-                        model_offspring.set_weights(weights_offspring)
+                        weights_offspring_one = reset_weights_layer(weights_offspring_one, layer)
+                        weights_offspring_two = reset_weights_layer(weights_offspring_two, layer)
+                        model_offspring_one.set_weights(weights_offspring_one)
+                        model_offspring_two.set_weights(weights_offspring_two)
 
-                    model_information_offspring = model_offspring.fit(x_train, y_train, batch_size=batch_size_sgd,
-                                                                      epochs=int(
-                                                                          total_training_epoch / num_trainable_layer),
-                                                                      verbose=2, validation_data=(x_test, y_test))
-                    weights_offspring = model_offspring.get_weights()
+                    model_information_offspring_one = model_offspring_one.fit(x_train, y_train,
+                                                                              batch_size=batch_size_sgd,
+                                                                              epochs=int(
+                                                                                  total_training_epoch / num_trainable_layer),
+                                                                              verbose=2,
+                                                                              validation_data=(x_test, y_test))
 
-                    if layer == num_trainable_layer - 1:
-                        break
+                    model_information_offspring_two = model_offspring_two.fit(x_train, y_train,
+                                                                              batch_size=batch_size_sgd,
+                                                                              epochs=int(
+                                                                                  total_training_epoch / num_trainable_layer),
+                                                                              verbose=2,
+                                                                              validation_data=(x_test, y_test))
 
-                    model_parent.set_weights(weights_parent)
-                    hidden_representation_offspring = get_hidden_layers(model_offspring, x_test, batch_size_activation)
-                    hidden_representation_parent = get_hidden_layers(model_parent, x_test, batch_size_activation)
-                    list_cross_corr_tmp = get_corr_cnn_filters(hidden_representation_offspring,
-                                                               hidden_representation_parent)
+                    loss_list.append(model_information_offspring_one.history["val_loss"])
+                    loss_list.append(model_information_offspring_two.history["val_loss"])
+
+                    weights_offspring_one = model_offspring_one.get_weights()
+                    weights_offspring_two = model_offspring_two.get_weights()
+
+                    model_offspring_one.set_weights(weights_offspring_one)
+                    model_offspring_two.set_weights(weights_offspring_two)
+
+                    # compute the cross correlation matrix
+                    hidden_representation_offspring_one = get_hidden_layers(model_offspring_one, x_test, batch_size_activation)
+                    hidden_representation_offspring_two = get_hidden_layers(model_offspring_two, x_test, batch_size_activation)
+
+                    list_cross_corr_tmp = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_two)
                     list_cross_corr[layer:] = list_cross_corr_tmp[layer:]
+
+                    self_corr_offspring_one = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_one)
+                    self_corr_offspring_two = get_corr_cnn_filters(hidden_representation_offspring_two, hidden_representation_offspring_two)
 
                     # functionally align the networks
                     list_ordered_indices_one, list_ordered_indices_two, weights_offspring, weights_parent = crossover_method(
-                        weights_offspring, weights_parent, list_cross_corr, safety_level)
+                        weights_offspring_one, weights_offspring_two, list_cross_corr, safety_level)
 
                     # re-order the correlation matrices
                     list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
@@ -223,31 +140,44 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                     # compute the q values for each layer (we use the same q values for naive alignment too)
                     if safety_level == "safe_crossover":
-                        q_values_list = compute_q_values(list_cross_corr)
+                        q_values_list[layer:] = compute_q_values(list_cross_corr)[layer:]
 
                         if not mix_full_networks:
                             q_values_list = [cut_off] * len(list_cross_corr)
 
-                    list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(list_cross_corr,
-                                                                                                      list_self_corr,
-                                                                                                      q_values_list)
+                    print(q_values_list)
+                    # identify neurons to transplant from offspring two to offspring one
+                    list_neurons_to_transplant_one, list_neurons_to_remove_one = identify_interesting_neurons(list_cross_corr,
+                                                                                                              self_corr_offspring_one,
+                                                                                                              q_values_list)
 
-                    if crossover == "aligned_targeted_crossover_random":
-                        list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(q_values_list)
+                    # identify neurons to transplant from offspring one to offspring two
+                    list_cross_corr_transpose = [np.transpose(corr_matrix) for corr_matrix in list_cross_corr]
+                    list_neurons_to_transplant_two, list_neurons_to_remove_two = identify_interesting_neurons(list_cross_corr_transpose,
+                                                                                                              self_corr_offspring_two,
+                                                                                                              q_values_list)
 
-                    # transplant layer by layer and order neurons after the transplant
-                    weights_offspring = transplant_neurons(weights_offspring, weights_parent,
-                                                           list_neurons_to_transplant, list_neurons_to_remove, layer,
-                                                           depth)
+                    if crossover == "frozen_aligned_targeted_crossover_random":
+                        list_neurons_to_transplant_one, list_neurons_to_remove_one = match_random_filters(q_values_list, list_cross_corr)
+                        list_neurons_to_transplant_two, list_neurons_to_remove_two = match_random_filters(q_values_list, list_cross_corr)
+
+                    # transplant offspring one
+                    weights_offspring_one_tmp = copy.deepcopy(weights_offspring_one)
+
+                    weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two, list_neurons_to_transplant_one,
+                                                               list_neurons_to_remove_one, layer, depth)
+
+                    # transplant offspring one
+                    weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
+                                                               list_neurons_to_remove_two, layer, depth)
 
                     depth = (layer + 1) * 6
 
                     # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
                     # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
-
-                    for index in range(len(list_neurons_to_transplant[layer])):
-                        index_neurons_to_transplant = list_neurons_to_transplant[layer][index]
-                        index_neurons_to_remove = list_neurons_to_remove[layer][index]
+                    for index in range(len(list_neurons_to_transplant_one[layer])):
+                        index_neurons_to_transplant = list_neurons_to_transplant_one[layer][index]
+                        index_neurons_to_remove = list_neurons_to_remove_one[layer][index]
 
                         self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[1]
                         self_correlation_with_constraint[index_neurons_to_transplant] = 1
@@ -262,10 +192,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
                                        range(len(list_ordered_indices_two))]
 
-                    loss_list.append(model_information_offspring.history["val_loss"])
+                tracker.print_diff()
 
                 loss_list = [val for sublist in loss_list for val in sublist]
                 result_list.append(loss_list)
+
+                print(result_list)
 
         if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random"]:
 
@@ -319,10 +251,10 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
 
                     list_ordered_indices_one, list_ordered_indices_two, fittest_weights, weakest_weights = crossover_method(
-                                                                              fittest_weights,
-                                                                              weakest_weights,
-                                                                              list_cross_corr,
-                                                                              safety_level)
+                        fittest_weights,
+                        weakest_weights,
+                        list_cross_corr,
+                        safety_level)
 
                     list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
                                        range(len(list_ordered_indices_two))]

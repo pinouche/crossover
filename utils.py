@@ -123,8 +123,6 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
 
     for index in range(len(list_cross_corr)):
 
-        print(q_value_list[index])
-
         self_corr = copy.deepcopy(list_self_corr[index])
         self_corr = np.abs(self_corr)
         np.fill_diagonal(self_corr, -0.1)
@@ -151,7 +149,6 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
             max_corr = np.max(corr)
             max_corr_list.append((max_corr, j))
         max_corr_list.sort()
-        print(max_corr_list)
         indices = [tuples[1] for tuples in max_corr_list[:num_neurons_to_remove]]
 
         neurons_indices_list_worst_parent.append(indices)
@@ -160,12 +157,12 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
     return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
 
 
-def match_random_filters(q_value_list):
+def match_random_filters(q_value_list, list_cross_corr):
     filters_to_remove = []
     filters_to_transplant = []
 
     for index in range(len(q_value_list)):
-        num_filters = len(q_value_list[index])
+        num_filters = int(list_cross_corr[index].shape[0]*q_value_list[index])
         num_filters_to_change = int(num_filters * q_value_list[index])
         indices_to_remove = random.sample(range(num_filters), num_filters_to_change)
         indices_to_transplant = random.sample(range(num_filters), num_filters_to_change)
@@ -174,18 +171,6 @@ def match_random_filters(q_value_list):
         filters_to_transplant.append(indices_to_transplant)
 
     return filters_to_transplant, filters_to_remove
-
-
-# def compute_mask_convergence(variance, q_variance):
-#     mask_list = []
-#
-#     for layer in range(len(variance)):
-#         var_layer = variance[layer]
-#         mask_layer = var_layer <= np.quantile(var_layer, q_variance)
-#
-#         mask_list.append(mask_layer)
-#
-#     return mask_list
 
 
 def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_list_two):
