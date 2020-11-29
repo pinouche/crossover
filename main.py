@@ -81,7 +81,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 print(safety_level)
 
                 loss_list = []
-                depth = 0
 
                 for layer in range(num_trainable_layer - 1):
 
@@ -124,13 +123,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     hidden_representation_offspring_two = get_hidden_layers(model_offspring_two, x_test, batch_size_activation)
 
                     list_cross_corr = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_two)
-                    #list_cross_corr[layer:] = list_cross_corr_tmp[layer:]
 
                     self_corr_offspring_one = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_one)
                     self_corr_offspring_two = get_corr_cnn_filters(hidden_representation_offspring_two, hidden_representation_offspring_two)
 
                     # functionally align the networks
-                    list_ordered_indices_one, list_ordered_indices_two, weights_offspring, weights_parent = crossover_method(
+                    list_ordered_indices_one, list_ordered_indices_two, weights_offspring_one, weights_offspring_two = crossover_method(
                         weights_offspring_one, weights_offspring_two, list_cross_corr, safety_level)
 
                     # re-order the correlation matrices
@@ -143,13 +141,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                         if not mix_full_networks:
                             q_values_list = [cut_off] * len(list_cross_corr)
-
-                    # # get the fittest and weakest offspring at the given time (if switch is returned to True, model two is the fittest)
-                    # q_values_list_one, q_values_list_two = q_values_list_fittest, q_values_list_weakest
-                    # switch = False
-                    # switch = get_fittest_network(model_information_offspring_one, model_information_offspring_two, switch)
-                    # if switch:
-                    #     q_values_list_one, q_values_list_two = q_values_list_weakest, q_values_list_fittest
 
                     # identify neurons to transplant from offspring two to offspring one
                     list_neurons_to_transplant_one, list_neurons_to_remove_one = identify_interesting_neurons(list_cross_corr,
@@ -169,49 +160,22 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     weights_offspring_one_tmp = copy.deepcopy(weights_offspring_one)
                     weights_offspring_two_tmp = copy.deepcopy(weights_offspring_two)
 
-                    # transplant offspring one
-                    weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
-                                                               list_neurons_to_remove_one, layer, depth)
+                    depth = 0
+                    for l in range(layer):
 
-                    # transplant offspring one
-                    weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
-                                                               list_neurons_to_remove_two, layer, depth)
+                        # transplant offspring one
+                        weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
+                                                                   list_neurons_to_remove_one, l, depth)
 
-                    depth = (layer + 1) * 6
+                        # transplant offspring one
+                        weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
+                                                                   list_neurons_to_remove_two, l, depth)
 
-                    # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
-                    # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
+                        depth = (layer + 1) * 6
 
-                    # neurons that go from network two to network one and that are not removed from network two
-                    # indices_in_common_network_two = [index for index in range(len(list_neurons_to_transplant_one[layer])) if
-                    #                                  list_neurons_to_transplant_one[layer][index] not in list_neurons_to_remove_two[layer]]
-                    #
-                    # indices_in_common_network_one = [index for index in range(len(list_neurons_to_transplant_two[layer])) if
-                    #                                  list_neurons_to_transplant_two[layer][index] not in list_neurons_to_remove_one[layer]]
-                    #
-                    # print(indices_in_common_network_one, indices_in_common_network_two)
-
-                    # updating the cross correlation matrix
-
-                    # for index in indices_in_common_network_two:
-                    #     index_neurons_to_transplant = list_neurons_to_transplant_one[layer][index]
-                    #     index_neurons_to_remove = list_neurons_to_remove_one[layer][index]
-                    #
-                    #     self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[1]
-                    #     self_correlation_with_constraint[index_neurons_to_transplant] = 1
-                    #     list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
-                    #
-                    # for index in indices_in_common_network_one:
-                    #     index_neurons_to_transplant = list_neurons_to_transplant_two[layer][index]
-                    #     index_neurons_to_remove = list_neurons_to_remove_two[layer][index]
-                    #
-                    #     self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[0]
-                    #     self_correlation_with_constraint[index_neurons_to_transplant] = 1
-                    #     list_cross_corr[layer][:, index_neurons_to_remove] = self_correlation_with_constraint
-
-                    list_ordered_indices_one, list_ordered_indices_two, weights_offspring, weights_parent = crossover_method(
-                        weights_offspring,
-                        weights_parent,
+                    list_ordered_indices_one, list_ordered_indices_two, weights_offspring_one, weights_offspring_two = crossover_method(
+                        weights_offspring_one,
+                        weights_offspring_two,
                         list_cross_corr,
                         safety_level)
 
