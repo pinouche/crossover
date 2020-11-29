@@ -118,8 +118,8 @@ def compute_neurons_variance(hidden_layers_list):
 
 def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
 
-    neurons_indices_list_worst_parent = []
-    indices_neurons_non_converged_best_parent_list = []
+    indices_neurons_low_corr = []
+    indices_neurons_redundant = []
 
     for index in range(len(list_cross_corr)):
 
@@ -151,10 +151,10 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
         max_corr_list.sort()
         indices = [tuples[1] for tuples in max_corr_list[:num_neurons_to_remove]]
 
-        neurons_indices_list_worst_parent.append(indices)
-        indices_neurons_non_converged_best_parent_list.append(list_neurons_remove)
+        indices_neurons_low_corr.append(indices)
+        indices_neurons_redundant.append(list_neurons_remove)
 
-    return neurons_indices_list_worst_parent, indices_neurons_non_converged_best_parent_list
+    return indices_neurons_low_corr, indices_neurons_redundant
 
 
 def match_random_filters(q_value_list, list_cross_corr):
@@ -204,7 +204,7 @@ def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_l
 
 
 # cross correlation function for both bipartite matching (hungarian method)
-def bipartite_matching(corr_matrix_nn, crossover="unsafe_crossover"):
+def bipartite_matching(corr_matrix_nn, crossover="safe_crossover"):
     corr_matrix_nn_tmp = copy.deepcopy(corr_matrix_nn)
     if crossover == "unsafe_crossover":
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
@@ -218,8 +218,6 @@ def bipartite_matching(corr_matrix_nn, crossover="unsafe_crossover"):
         corr_matrix_nn_tmp = np.abs(corr_matrix_nn_tmp)
         corr_matrix_nn_tmp *= -1
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
-    elif crossover == "naive_crossover":
-        list_neurons_x, list_neurons_y = list(range(corr_matrix_nn.shape[0])), list(range(corr_matrix_nn.shape[0]))
     else:
         raise ValueError('the crossover method is not defined')
 
@@ -261,31 +259,32 @@ def permute_cnn(weights_list_copy, list_permutation):
 
 def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, indices_remove, layer, depth):
 
+    weakest_weights_copy = copy.deepcopy(weakest_weights)
+
     for index in range(7):
         if index == 0:
             # order filters
-            fittest_weights[index + depth][:, :, :, indices_remove[layer]] = weakest_weights[index + depth][:, :, :,
+            fittest_weights[index + depth][:, :, :, indices_remove[layer]] = weakest_weights_copy[index + depth][:, :, :,
                                                                              indices_transplant[layer]]
         elif index == [1, 2, 3, 4, 5]:
             # order the biases and the batch norm parameters
-            fittest_weights[index + depth][indices_remove[layer]] = weakest_weights[index + depth][
+            fittest_weights[index + depth][indices_remove[layer]] = weakest_weights_copy[index + depth][
                 indices_transplant[layer]]
         elif index == 6:
             if (index + depth) != (len(fittest_weights) - 1):
                 # order channels
-                fittest_weights[index + depth][:, :, indices_remove[layer], :] = weakest_weights[index + depth][:, :,
+                fittest_weights[index + depth][:, :, indices_remove[layer], :] = weakest_weights_copy[index + depth][:, :,
                                                                                  indices_transplant[layer], :]
             else:  # this is for the flattened fully connected layer
 
                 num_filters = 32
-                weights_tmp = copy.deepcopy(weakest_weights[index + depth])
-                activation_map_size = int(weights_tmp.shape[0] / num_filters)
+                activation_map_size = int(weakest_weights_copy[index + depth].shape[0] / num_filters)
 
                 for i in range(len(indices_transplant[layer])):
                     filter_id_transplant = indices_transplant[layer][i]
                     filter_id_remove = indices_remove[layer][i]
                     fittest_weights[index + depth][
-                        [num_filters * j + filter_id_remove for j in range(activation_map_size)]] = weights_tmp[
+                        [num_filters * j + filter_id_remove for j in range(activation_map_size)]] = weakest_weights_copy[index + depth][
                         [num_filters * j + filter_id_transplant for j in range(activation_map_size)]]
 
     return fittest_weights
@@ -296,7 +295,7 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     list_ordered_indices_one = []
     list_ordered_indices_two = []
 
-    if crossover == "naive":
+    if crossover == "naive_crossover":
         list_ordered_w_one = list(weights_one)
         list_ordered_w_two = list(weights_two)
 
@@ -324,9 +323,9 @@ def compute_q_values(list_cross_corr_copy):
 
         print(np.diag(corr))
         similarity = np.mean(np.abs(np.diag(corr)))
-        q_value = -0.5*similarity+0.5
-        #q_value = 0.5*similarity
-        q_value_list.append(q_value)
+        print(similarity)
+
+        q_value_list.append(similarity)
 
     return q_value_list
 
@@ -383,12 +382,10 @@ def mean_ensemble(model_one, model_two, x_test, y_test):
     return loss
 
 
-def get_fittest_parent(model_one, model_two, model_one_performance, model_two_performance, switch):
+def get_fittest_network(model_information_offspring_one, model_information_offspring_two, switch):
 
     # make sure that model_one is the fittest model
-    if np.min(model_one_performance) > np.min(model_two_performance):
-        model_one, model_two = model_two, model_one
-        model_one_performance, model_two_performance = model_two_performance, model_one_performance
+    if np.min(model_information_offspring_one.history["val_loss"]) > np.min(model_information_offspring_two.history["val_loss"]):
         switch = True
 
-    return model_one, model_two, model_one_performance, model_two_performance, switch
+    return switch

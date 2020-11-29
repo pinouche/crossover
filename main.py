@@ -5,7 +5,6 @@ import warnings
 import pickle
 import os
 import copy
-from pympler.tracker import SummaryTracker
 
 from keras.models import load_model
 import keras
@@ -14,7 +13,7 @@ from utils import load_cifar
 from utils import load_mnist
 from utils import load_cifar_100
 from utils import partition_classes
-from utils import get_fittest_parent
+from utils import get_fittest_network
 
 # from utils import compute_mask_convergence
 # from utils import compute_neurons_variance
@@ -74,10 +73,10 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
         if crossover in ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]:
 
             q_values_list = [0] * (num_trainable_layer - 1)
-            list_cross_corr = [None] * (num_trainable_layer - 1)
 
             for safety_level in ["safe_crossover", "naive_crossover"]:
-                tracker = SummaryTracker()
+
+                list_cross_corr = [None] * (num_trainable_layer - 1)
 
                 print(safety_level)
 
@@ -124,8 +123,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     hidden_representation_offspring_one = get_hidden_layers(model_offspring_one, x_test, batch_size_activation)
                     hidden_representation_offspring_two = get_hidden_layers(model_offspring_two, x_test, batch_size_activation)
 
-                    list_cross_corr_tmp = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_two)
-                    list_cross_corr[layer:] = list_cross_corr_tmp[layer:]
+                    list_cross_corr = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_two)
+                    #list_cross_corr[layer:] = list_cross_corr_tmp[layer:]
 
                     self_corr_offspring_one = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_one)
                     self_corr_offspring_two = get_corr_cnn_filters(hidden_representation_offspring_two, hidden_representation_offspring_two)
@@ -145,7 +144,13 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         if not mix_full_networks:
                             q_values_list = [cut_off] * len(list_cross_corr)
 
-                    print(q_values_list)
+                    # # get the fittest and weakest offspring at the given time (if switch is returned to True, model two is the fittest)
+                    # q_values_list_one, q_values_list_two = q_values_list_fittest, q_values_list_weakest
+                    # switch = False
+                    # switch = get_fittest_network(model_information_offspring_one, model_information_offspring_two, switch)
+                    # if switch:
+                    #     q_values_list_one, q_values_list_two = q_values_list_weakest, q_values_list_fittest
+
                     # identify neurons to transplant from offspring two to offspring one
                     list_neurons_to_transplant_one, list_neurons_to_remove_one = identify_interesting_neurons(list_cross_corr,
                                                                                                               self_corr_offspring_one,
@@ -161,10 +166,11 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         list_neurons_to_transplant_one, list_neurons_to_remove_one = match_random_filters(q_values_list, list_cross_corr)
                         list_neurons_to_transplant_two, list_neurons_to_remove_two = match_random_filters(q_values_list, list_cross_corr)
 
-                    # transplant offspring one
                     weights_offspring_one_tmp = copy.deepcopy(weights_offspring_one)
+                    weights_offspring_two_tmp = copy.deepcopy(weights_offspring_two)
 
-                    weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two, list_neurons_to_transplant_one,
+                    # transplant offspring one
+                    weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
                                                                list_neurons_to_remove_one, layer, depth)
 
                     # transplant offspring one
@@ -175,13 +181,33 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                     # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
                     # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
-                    for index in range(len(list_neurons_to_transplant_one[layer])):
-                        index_neurons_to_transplant = list_neurons_to_transplant_one[layer][index]
-                        index_neurons_to_remove = list_neurons_to_remove_one[layer][index]
 
-                        self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[1]
-                        self_correlation_with_constraint[index_neurons_to_transplant] = 1
-                        list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
+                    # neurons that go from network two to network one and that are not removed from network two
+                    # indices_in_common_network_two = [index for index in range(len(list_neurons_to_transplant_one[layer])) if
+                    #                                  list_neurons_to_transplant_one[layer][index] not in list_neurons_to_remove_two[layer]]
+                    #
+                    # indices_in_common_network_one = [index for index in range(len(list_neurons_to_transplant_two[layer])) if
+                    #                                  list_neurons_to_transplant_two[layer][index] not in list_neurons_to_remove_one[layer]]
+                    #
+                    # print(indices_in_common_network_one, indices_in_common_network_two)
+
+                    # updating the cross correlation matrix
+
+                    # for index in indices_in_common_network_two:
+                    #     index_neurons_to_transplant = list_neurons_to_transplant_one[layer][index]
+                    #     index_neurons_to_remove = list_neurons_to_remove_one[layer][index]
+                    #
+                    #     self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[1]
+                    #     self_correlation_with_constraint[index_neurons_to_transplant] = 1
+                    #     list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
+                    #
+                    # for index in indices_in_common_network_one:
+                    #     index_neurons_to_transplant = list_neurons_to_transplant_two[layer][index]
+                    #     index_neurons_to_remove = list_neurons_to_remove_two[layer][index]
+                    #
+                    #     self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[0]
+                    #     self_correlation_with_constraint[index_neurons_to_transplant] = 1
+                    #     list_cross_corr[layer][:, index_neurons_to_remove] = self_correlation_with_constraint
 
                     list_ordered_indices_one, list_ordered_indices_two, weights_offspring, weights_parent = crossover_method(
                         weights_offspring,
@@ -189,15 +215,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         list_cross_corr,
                         safety_level)
 
+                    # update the cross-correlation matrix
                     list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
                                        range(len(list_ordered_indices_two))]
 
-                tracker.print_diff()
-
                 loss_list = [val for sublist in loss_list for val in sublist]
                 result_list.append(loss_list)
-
-                print(result_list)
 
         if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random"]:
 
