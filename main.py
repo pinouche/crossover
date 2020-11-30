@@ -15,8 +15,7 @@ from utils import load_cifar_100
 from utils import partition_classes
 from utils import get_fittest_network
 
-# from utils import compute_mask_convergence
-# from utils import compute_neurons_variance
+from utils import compute_neurons_variance
 from utils import identify_interesting_neurons
 from utils import transplant_neurons
 from utils import get_hidden_layers
@@ -50,7 +49,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # program hyperparameters
     num_trainable_layer = 7
     mix_full_networks = True
-    total_training_epoch = 25 * num_trainable_layer
+    total_training_epoch = 20 * num_trainable_layer
     batch_size_activation = 2048  # batch_size to compute the activation maps
     batch_size_sgd = 512
     cut_off = 0.2
@@ -75,8 +74,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             q_values_list = [0] * (num_trainable_layer - 1)
 
             for safety_level in ["safe_crossover", "naive_crossover"]:
-
-                list_cross_corr = [None] * (num_trainable_layer - 1)
 
                 print(safety_level)
 
@@ -173,80 +170,18 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                         depth = (layer + 1) * 6
 
-                    list_ordered_indices_one, list_ordered_indices_two, weights_offspring_one, weights_offspring_two = crossover_method(
-                        weights_offspring_one,
-                        weights_offspring_two,
-                        list_cross_corr,
-                        safety_level)
+                        list_ordered_indices_one, list_ordered_indices_two, weights_offspring_one, weights_offspring_two = crossover_method(
+                            weights_offspring_one,
+                            weights_offspring_two,
+                            list_cross_corr,
+                            safety_level)
 
-                    # update the cross-correlation matrix
-                    list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
-                                       range(len(list_ordered_indices_two))]
+                        # update the cross-correlation matrix
+                        list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
+                                           range(len(list_ordered_indices_two))]
 
                 loss_list = [val for sublist in loss_list for val in sublist]
                 result_list.append(loss_list)
-
-        if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random"]:
-
-            different_safety_weights_list = []
-
-            for safety_level in ["safe_crossover", "naive_crossover"]:
-
-                # first, functionally align the trained and initial networks
-                fittest_weights, weakest_weights = copy.deepcopy(weights_nn_one), copy.deepcopy(weights_nn_two)
-
-                list_ordered_indices_one, list_ordered_indices_two, fittest_weights, weakest_weights = crossover_method(
-                    fittest_weights, weakest_weights, list_cross_corr, safety_level)
-
-                # re-order the cross correlation matrix
-                list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
-                                   range(len(list_ordered_indices_two))]
-
-                # compute the q values for each layer (we use the same q values for naive alignment too)
-                if safety_level == "safe_crossover":
-                    q_values_list = compute_q_values(list_cross_corr)
-
-                    if not mix_full_networks:
-                        q_values_list = [cut_off] * len(list_cross_corr)
-
-                list_neurons_to_transplant, list_neurons_to_remove = identify_interesting_neurons(list_cross_corr,
-                                                                                                  list_self_corr,
-                                                                                                  q_values_list)
-
-                if crossover == "aligned_targeted_crossover_random":
-                    list_neurons_to_transplant, list_neurons_to_remove = match_random_filters(q_values_list)
-
-                depth = 0
-
-                for layer in range(len(list_neurons_to_transplant)):
-                    # transplant layer by layer and order neurons after the transplant
-                    fittest_weights = transplant_neurons(fittest_weights, weakest_weights,
-                                                         list_neurons_to_transplant, list_neurons_to_remove, layer,
-                                                         depth)
-
-                    depth = (layer + 1) * 6
-
-                    # modify the correlation matrix to reflect transplants and align the new layer in fittest weight
-                    # with the layer in weakest weights (i.e. match the transplanted neurons with each other).
-
-                    for index in range(len(list_neurons_to_transplant[layer])):
-                        index_neurons_to_transplant = list_neurons_to_transplant[layer][index]
-                        index_neurons_to_remove = list_neurons_to_remove[layer][index]
-
-                        self_correlation_with_constraint = [-10000] * list_cross_corr[layer].shape[1]
-                        self_correlation_with_constraint[index_neurons_to_transplant] = 1
-                        list_cross_corr[layer][index_neurons_to_remove] = self_correlation_with_constraint
-
-                    list_ordered_indices_one, list_ordered_indices_two, fittest_weights, weakest_weights = crossover_method(
-                        fittest_weights,
-                        weakest_weights,
-                        list_cross_corr,
-                        safety_level)
-
-                    list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
-                                       range(len(list_ordered_indices_two))]
-
-                different_safety_weights_list.append(fittest_weights)
 
         elif crossover == "large_subset_fine_tune":
             different_safety_weights_list = []
@@ -278,8 +213,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 result_list.append(list_performance)
 
         keras.backend.clear_session()
-
-    result_list.append(loss_history_parent_full)
 
     data_struc[str(work_id) + "_performance"] = result_list
 
