@@ -2,17 +2,9 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 from sklearn.metrics import log_loss, accuracy_score
 from scipy.special import softmax
-import pickle
 import keras
 import copy
 import random
-
-
-# load data functions
-def unpickle(file):
-    with open(file, 'rb') as fo:
-        data_dict = pickle.load(fo, encoding='bytes')
-    return data_dict
 
 
 def load_mnist(flatten=True):
@@ -56,25 +48,6 @@ def load_cifar(flatten=True):
     return x_train, x_test, y_train, y_test
 
 
-def partition_classes(x_train, x_test, y_train, y_test, cut_off=0.5):
-    cut_off = int(len(np.unique(y_train)) * cut_off)
-
-    mask_train = np.squeeze(y_train >= cut_off)
-    mask_test = np.squeeze(y_test >= cut_off)
-
-    x_train_s1 = x_train[mask_train]
-    y_train_s1 = y_train[mask_train]
-    x_test_s1 = x_test[mask_test]
-    y_test_s1 = y_test[mask_test]
-
-    x_train_s2 = x_train[~mask_train]
-    y_train_s2 = y_train[~mask_train]
-    x_test_s2 = x_test[~mask_test]
-    y_test_s2 = y_test[~mask_test]
-
-    return x_train_s1, y_train_s1, x_test_s1, y_test_s1, x_train_s2, y_train_s2, x_test_s2, y_test_s2
-
-
 def get_hidden_layers(model, data_x, batch_size):
     data_x = data_x[:batch_size]
 
@@ -116,24 +89,29 @@ def compute_neurons_variance(hidden_layers_list):
     return list_variance_filters
 
 
-def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
+def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_corr_two, q_value_list):
 
     indices_neurons_low_corr = []
     indices_neurons_redundant = []
 
     for index in range(len(list_cross_corr)):
 
-        self_corr = copy.deepcopy(list_self_corr[index])
-        self_corr = np.abs(self_corr)
-        np.fill_diagonal(self_corr, -0.1)
+        self_corr_two = copy.deepcopy(list_self_corr_two[index])
+        self_corr_two = np.abs(self_corr_two)
+        np.fill_diagonal(self_corr_two, -0.1)
 
-        num_filters = self_corr.shape[0]
+        self_corr_one = copy.deepcopy(list_self_corr_one[index])
+        self_corr_one = np.abs(self_corr_one)
+        np.fill_diagonal(self_corr_one, -0.1)
+
+        num_filters = self_corr_one.shape[0]
         num_neurons_to_remove = int(num_filters * q_value_list[index])
+
         list_neurons_remove = []
         for _ in range(num_neurons_to_remove):
-            index_remove = np.argmax(np.max(self_corr, axis=1))
-            self_corr = np.delete(self_corr, index_remove, 0)
-            self_corr = np.delete(self_corr, index_remove, 1)
+            index_remove = np.argmax(np.max(self_corr_one, axis=1))
+            self_corr_one = np.delete(self_corr_one, index_remove, 0)
+            self_corr_one = np.delete(self_corr_one, index_remove, 1)
 
             list_neurons_remove.append(index_remove)
 
@@ -143,15 +121,17 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr, q_value_list):
         bool_idx[list_neurons_remove] = False
         corr_matrix = copy.deepcopy(list_cross_corr[index][bool_idx])
 
-        max_corr_list = []
-        for j in range(corr_matrix.shape[1]):
-            corr = np.abs(corr_matrix[:, j])
-            max_corr = np.max(corr)
-            max_corr_list.append((max_corr, j))
-        max_corr_list.sort()
-        indices = [tuples[1] for tuples in max_corr_list[:num_neurons_to_remove]]
+        list_neurons_transplant = []
+        for _ in range(num_neurons_to_remove):
+            index_transplant = np.argmin(np.max(np.abs(corr_matrix), axis=0))
+            corr_matrix = np.delete(corr_matrix, index_transplant, 1)
+            self_corr_two = np.delete(self_corr_two, index_transplant, 1)
+            corr_matrix = np.vstack((corr_matrix, self_corr_two[index_transplant]))
 
-        indices_neurons_low_corr.append(indices)
+            list_neurons_transplant.append(index_transplant)
+
+        indices_neurons_low_corr.append(list_neurons_transplant)
+
         indices_neurons_redundant.append(list_neurons_remove)
 
     return indices_neurons_low_corr, indices_neurons_redundant
@@ -295,22 +275,17 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     list_ordered_indices_one = []
     list_ordered_indices_two = []
 
-    if crossover == "naive_crossover":
-        list_ordered_w_one = list(weights_one)
-        list_ordered_w_two = list(weights_two)
+    for index in range(len(list_corr_matrices)):
+        corr_matrix_nn = list_corr_matrices[index]
 
-    else:
-        for index in range(len(list_corr_matrices)):
-            corr_matrix_nn = list_corr_matrices[index]
+        indices_one, indices_two = bipartite_matching(corr_matrix_nn, crossover)
+        list_ordered_indices_one.append(indices_one)
+        list_ordered_indices_two.append(indices_two)
 
-            indices_one, indices_two = bipartite_matching(corr_matrix_nn, crossover)
-            list_ordered_indices_one.append(indices_one)
-            list_ordered_indices_two.append(indices_two)
-
-        weights_nn_one_copy = list(weights_one)
-        weights_nn_two_copy = list(weights_two)
-        list_ordered_w_one = permute_cnn(weights_nn_one_copy, list_ordered_indices_one)
-        list_ordered_w_two = permute_cnn(weights_nn_two_copy, list_ordered_indices_two)
+    weights_nn_one_copy = list(weights_one)
+    weights_nn_two_copy = list(weights_two)
+    list_ordered_w_one = permute_cnn(weights_nn_one_copy, list_ordered_indices_one)
+    list_ordered_w_two = permute_cnn(weights_nn_two_copy, list_ordered_indices_two)
 
     return list_ordered_indices_one, list_ordered_indices_two, list_ordered_w_one, list_ordered_w_two
 
