@@ -198,6 +198,8 @@ def bipartite_matching(corr_matrix_nn, crossover="safe_crossover"):
         corr_matrix_nn_tmp = np.abs(corr_matrix_nn_tmp)
         corr_matrix_nn_tmp *= -1
         list_neurons_x, list_neurons_y = linear_sum_assignment(corr_matrix_nn_tmp)
+    elif crossover == "naive_crossover":
+        list_neurons_x, list_neurons_y = list(range(corr_matrix_nn_tmp.shape[0])), list(range(corr_matrix_nn_tmp.shape[0]))
     else:
         raise ValueError('the crossover method is not defined')
 

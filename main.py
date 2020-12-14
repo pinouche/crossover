@@ -48,10 +48,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     # program hyperparameters
     num_trainable_layer = 7
     mix_full_networks = True
-    epochs_per_layer = 1
     batch_size_activation = 2048  # batch_size to compute the activation maps
     batch_size_sgd = 512
-    cut_off = 0.2
     result_list = []
 
     crossover_types = ["frozen_aligned_targeted_crossover_low_corr", "frozen_aligned_targeted_crossover_random"]
@@ -92,6 +90,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                         model_offspring_two.set_weights(weights_offspring_two)
 
                     # when the last layer has been transplanted, we fully train the network until convergence.
+                    epochs_per_layer = 15
                     if layer == 5:
                         epochs_per_layer = 50
 
@@ -131,12 +130,9 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                        range(len(list_ordered_indices_two))]
 
                     # compute the q values for each layer (we use the same q values for naive alignment too)
-                    if mix_full_networks:
-                        #q_values_list[layer:] = compute_q_values(list_cross_corr)[layer:]
-                        q_values_list = [0.2] * len(list_cross_corr)
 
-                    elif not mix_full_networks:
-                        q_values_list = [cut_off] * len(list_cross_corr)
+                    # q_values_list[layer:] = compute_q_values(list_cross_corr)[layer:]
+                    q_values_list = [0.2] * len(list_cross_corr)
 
                     # identify neurons to transplant from offspring two to offspring one
                     list_neurons_to_transplant_one, list_neurons_to_remove_one = identify_interesting_neurons(list_cross_corr,
@@ -176,16 +172,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 loss_list = [val for sublist in loss_list for val in sublist]
                 result_list.append(loss_list)
-
-        elif crossover == "large_subset_fine_tune":
-            different_safety_weights_list = []
-            fittest_weights = copy.deepcopy(weights_nn_one)
-            different_safety_weights_list.append(fittest_weights)
-
-        elif crossover == "mean_ensemble":
-            loss = mean_ensemble(model_one, model_two, x_test, y_test)
-
-            result_list.append(loss)
 
         if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
                          "large_subset_fine_tune"]:
