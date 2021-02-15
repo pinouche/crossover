@@ -173,25 +173,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 loss_list = [val for sublist in loss_list for val in sublist]
                 result_list.append(loss_list)
 
-        if crossover in ["aligned_targeted_crossover_low_corr", "aligned_targeted_crossover_random",
-                         "large_subset_fine_tune"]:
-
-            for fittest_weights in different_safety_weights_list:
-                weights_crossover = copy.deepcopy(fittest_weights)
-
-                model_offspring = keras_model_cnn(0, data)
-
-                model_offspring.set_weights(weights_crossover)
-                # reduce_lr = keras.callbacks.LearningRateScheduler(lr_scheduler)
-                model_information_offspring = model_offspring.fit(x_train, y_train,
-                                                                  epochs=total_training_epoch,
-                                                                  batch_size=batch_size_sgd,
-                                                                  verbose=2, validation_data=(x_test, y_test))
-
-                list_performance = model_information_offspring.history["val_loss"]
-
-                result_list.append(list_performance)
-
         keras.backend.clear_session()
 
     data_struc[str(work_id) + "_performance"] = result_list
