@@ -90,6 +90,7 @@ def compute_neurons_variance(hidden_layers_list):
 
 
 def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_corr_two):
+
     def get_unique_pairs(list_neurons_to_remove_one, list_neurons_to_transplant_one):
 
         unique_list_neurons_to_remove = []
@@ -147,19 +148,16 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_
             # update cross correlation
             cross_corr = np.insert(cross_corr, index_transplant, self_corr_two[index_transplant, :], axis=0)
 
-            # if index_remove in list_neurons_remove or index_transplant in list_neurons_transplant:
-            #    break
-
             list_neurons_remove.append(index_remove)
             list_neurons_transplant.append(index_transplant)
             count += 1
 
         indices_neurons_low_corr.append(list_neurons_transplant)
         indices_neurons_redundant.append(list_neurons_remove)
-        print("NUMBER OF NEURONS SWAPPED")
-        print(len(list_neurons_transplant))
 
     indices_neurons_redundant, indices_neurons_low_corr = get_unique_pairs(indices_neurons_redundant, indices_neurons_low_corr)
+    print("NUMBER OF NEURONS SWAPPED")
+    print([len(indices_neurons_redundant[index]) for index in range(len(indices_neurons_redundant))])
 
     return indices_neurons_low_corr, indices_neurons_redundant
 
