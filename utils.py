@@ -89,7 +89,28 @@ def compute_neurons_variance(hidden_layers_list):
     return list_variance_filters
 
 
-def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_corr_two, q_value_list):
+def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_corr_two):
+    def get_unique_pairs(list_neurons_to_remove_one, list_neurons_to_transplant_one):
+
+        unique_list_neurons_to_remove = []
+        unique_list_neurons_to_transplant = []
+
+        for index in range(len(list_neurons_to_remove_one)):
+            list_neurons_j = []
+            list_neurons_i = []
+
+            for neuron_id in range(len(list_neurons_to_remove_one[index])):
+                neuron_i = list_neurons_to_remove_one[index][neuron_id]
+                neuron_j = list_neurons_to_transplant_one[index][neuron_id]
+
+                if neuron_j not in list_neurons_j:
+                    list_neurons_i.append(neuron_i)
+                    list_neurons_j.append(neuron_j)
+
+            unique_list_neurons_to_remove.append(list_neurons_i)
+            unique_list_neurons_to_transplant.append(list_neurons_j)
+
+        return unique_list_neurons_to_remove, unique_list_neurons_to_transplant
 
     indices_neurons_low_corr = []
     indices_neurons_redundant = []
@@ -104,35 +125,41 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_
         self_corr_one = np.abs(self_corr_one)
         np.fill_diagonal(self_corr_one, -0.1)
 
-        num_filters = self_corr_one.shape[0]
-        num_neurons_to_remove = int(num_filters * q_value_list[index])
+        cross_corr = list_cross_corr[index]
 
         list_neurons_remove = []
-        for _ in range(num_neurons_to_remove):
+        list_neurons_transplant = []
+        count = 0
+        for _ in range(self_corr_one.shape[0]):
             index_remove = np.argmax(np.max(self_corr_one, axis=1))
+
+            # update new self_corr_one
             self_corr_one = np.delete(self_corr_one, index_remove, 0)
             self_corr_one = np.delete(self_corr_one, index_remove, 1)
+            cross_corr = np.delete(cross_corr, index_remove, 0)
+
+            index_transplant = np.argmin(np.max(np.abs(cross_corr), axis=0))
+            cross_corr_array = cross_corr[:, index_transplant]
+            self_corr_one = np.insert(self_corr_one, index_remove, cross_corr_array, axis=0)
+            cross_corr_array = np.insert(cross_corr_array, index_remove, -0.1)
+            self_corr_one = np.insert(self_corr_one, index_remove, cross_corr_array, axis=1)
+
+            # update cross correlation
+            cross_corr = np.insert(cross_corr, index_transplant, self_corr_two[index_transplant, :], axis=0)
+
+            # if index_remove in list_neurons_remove or index_transplant in list_neurons_transplant:
+            #    break
 
             list_neurons_remove.append(index_remove)
-
-        num_neurons_to_remove = len(list_neurons_remove)
-
-        bool_idx = np.ones(num_filters, dtype=bool)
-        bool_idx[list_neurons_remove] = False
-        corr_matrix = copy.deepcopy(list_cross_corr[index][bool_idx])
-
-        list_neurons_transplant = []
-        for _ in range(num_neurons_to_remove):
-            index_transplant = np.argmin(np.max(np.abs(corr_matrix), axis=0))
-            corr_matrix = np.delete(corr_matrix, index_transplant, 1)
-            self_corr_two = np.delete(self_corr_two, index_transplant, 1)
-            corr_matrix = np.vstack((corr_matrix, self_corr_two[index_transplant]))
-
             list_neurons_transplant.append(index_transplant)
+            count += 1
 
         indices_neurons_low_corr.append(list_neurons_transplant)
-
         indices_neurons_redundant.append(list_neurons_remove)
+        print("NUMBER OF NEURONS SWAPPED")
+        print(len(list_neurons_transplant))
+
+    indices_neurons_redundant, indices_neurons_low_corr = get_unique_pairs(indices_neurons_redundant, indices_neurons_low_corr)
 
     return indices_neurons_low_corr, indices_neurons_redundant
 

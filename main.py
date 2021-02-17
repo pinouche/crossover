@@ -48,11 +48,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     crossover_types = ["targeted_crossover_low_corr", "targeted_crossover_random"]
 
-
     for crossover in crossover_types:
-
         print("crossover method: " + crossover)
-
         for safety_level in ["safe_crossover", "naive_crossover"]:
 
             depth = 0
@@ -113,7 +110,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 hidden_representation_offspring_two = get_hidden_layers(model_offspring_two, x_test, batch_size_activation)
 
                 list_cross_corr = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_two)
-
                 self_corr_offspring_one = get_corr_cnn_filters(hidden_representation_offspring_one, hidden_representation_offspring_one)
                 self_corr_offspring_two = get_corr_cnn_filters(hidden_representation_offspring_two, hidden_representation_offspring_two)
 
@@ -133,15 +129,13 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     # identify neurons to transplant from offspring two to offspring one
                     list_neurons_to_transplant_one, list_neurons_to_remove_one = identify_interesting_neurons(list_cross_corr,
                                                                                                               self_corr_offspring_one,
-                                                                                                              self_corr_offspring_two,
-                                                                                                              q_values_list)
+                                                                                                              self_corr_offspring_two)
 
                     # identify neurons to transplant from offspring one to offspring two
                     list_cross_corr_transpose = [np.transpose(corr_matrix) for corr_matrix in list_cross_corr]
                     list_neurons_to_transplant_two, list_neurons_to_remove_two = identify_interesting_neurons(list_cross_corr_transpose,
                                                                                                               self_corr_offspring_two,
-                                                                                                              self_corr_offspring_one,
-                                                                                                              q_values_list)
+                                                                                                              self_corr_offspring_one)
 
                 elif crossover == "targeted_crossover_random":
                     list_neurons_to_transplant_one, list_neurons_to_remove_one = match_random_filters(q_values_list, list_cross_corr)
