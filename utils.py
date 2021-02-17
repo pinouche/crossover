@@ -1,7 +1,5 @@
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import log_loss, accuracy_score
-from scipy.special import softmax
 import keras
 import copy
 import random
@@ -316,47 +314,3 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
 
     return list_ordered_indices_one, list_ordered_indices_two, list_ordered_w_one, list_ordered_w_two
 
-
-def compute_q_values(list_cross_corr_copy):
-
-    q_value_list = []
-    for index in range(len(list_cross_corr_copy)):
-        corr = list_cross_corr_copy[index]
-
-        print(np.diag(corr))
-        similarity = np.mean(np.abs(np.diag(corr)))
-        print(similarity)
-
-        q_value_list.append(similarity)
-
-    return q_value_list
-
-
-# def mean_ensemble(model_one, model_two, x_test, y_test):
-#
-#     def keras_function_layer(model, model_layer, data):
-#         hidden_func = keras.backend.function(model.layers[0].input, model_layer.output)
-#         result = hidden_func([data])
-#
-#         return result
-#
-#     logits_model_one = keras_function_layer(model_one, model_one.layers[-2], x_test)
-#     logits_model_two = keras_function_layer(model_two, model_two.layers[-2], x_test)
-#
-#     ensemble_predictions = (logits_model_one + logits_model_two)/2
-#     ensemble_predictions = softmax(ensemble_predictions)
-#     class_prediction = np.argmax(ensemble_predictions, axis=1)
-#
-#     loss = log_loss(y_test, ensemble_predictions)
-#     accuracy = accuracy_score(y_test, class_prediction)
-#
-#     return loss
-#
-#
-# def get_fittest_network(model_information_offspring_one, model_information_offspring_two, switch):
-#
-#     # make sure that model_one is the fittest model
-#     if np.min(model_information_offspring_one.history["val_loss"]) > np.min(model_information_offspring_two.history["val_loss"]):
-#         switch = True
-#
-#     return switch
