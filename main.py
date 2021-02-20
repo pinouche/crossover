@@ -20,10 +20,8 @@ from utils import match_random_filters
 from utils import get_corr_cnn_filters
 from utils import crossover_method
 
-from neural_models import CustomSaver
-from neural_models import lr_scheduler
 from neural_models import keras_model_cnn
-from neural_models import keras_vgg
+
 
 warnings.filterwarnings("ignore")
 
@@ -50,7 +48,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     for crossover in crossover_types:
         print("crossover method: " + crossover)
-        for safety_level in ["safe_crossover", "naive_crossover"]:
+        for safety_level in ["safe_crossover", "unsafe_crossover"]:
 
             depth = 0
 
@@ -173,11 +171,11 @@ if __name__ == "__main__":
     data = "cifar10"
 
     if data == "cifar10":
-        x_train, x_test, y_train, y_test = load_cifar(False)
+        x_train, x_test, y_train, y_test = load_cifar()
     elif data == "cifar100":
-        x_train, x_test, y_train, y_test = load_cifar_100(False)
+        x_train, x_test, y_train, y_test = load_cifar_100()
     elif data == "mnist":
-        x_train, x_test, y_train, y_test = load_mnist(False)
+        x_train, x_test, y_train, y_test = load_mnist()
 
     num_processes = 1
 

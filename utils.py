@@ -5,18 +5,14 @@ import copy
 import random
 
 
-def load_mnist(flatten=True):
+def load_mnist():
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     x_train, x_test = x_train / 255.0, x_test / 255.0
-
-    if flatten:
-        x_train = np.reshape(x_train, (x_train.shape[0], 28 * 28))
-        x_test = np.reshape(x_test, (x_test.shape[0], 28 * 28))
 
     return x_train, x_test, y_train, y_test
 
 
-def load_cifar_100(flatten=True):
+def load_cifar_100():
     (x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data(label_mode="coarse")
     x_train = x_train.astype('float32')
     x_test = x_test.astype('float32')
@@ -24,24 +20,16 @@ def load_cifar_100(flatten=True):
     x_train = x_train / 255.0
     x_test = x_test / 255.0
 
-    if flatten:
-        x_train = np.reshape(x_train, (x_train.shape[0], 3072))
-        x_test = np.reshape(x_test, (x_test.shape[0], 3072))
-
     return x_train, x_test, y_train, y_test
 
 
-def load_cifar(flatten=True):
+def load_cifar():
     (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
     x_train = x_train.astype('float32')
     x_test = x_test.astype('float32')
 
     x_train = x_train / 255.0
     x_test = x_test / 255.0
-
-    if flatten:
-        x_train = np.reshape(x_train, (x_train.shape[0], 3072))
-        x_test = np.reshape(x_test, (x_test.shape[0], 3072))
 
     return x_train, x_test, y_train, y_test
 
@@ -124,7 +112,7 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_
         self_corr_one = np.abs(self_corr_one)
         np.fill_diagonal(self_corr_one, -0.1)
 
-        cross_corr = list_cross_corr[index]
+        cross_corr = copy.deepcopy(list_cross_corr[index])
 
         list_neurons_remove = []
         list_neurons_transplant = []
