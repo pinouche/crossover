@@ -44,7 +44,7 @@ def linear_classifier_keras(seed, input_size, data):
 
 def keras_model_cnn(seed, data, trainable_list=[]):
 
-    num_trainable_layers = 7
+    num_trainable_layers = 5
     input_shape = (32, 32, 3)
     output_size = 10
     if data == "cifar100":
@@ -78,22 +78,11 @@ def keras_model_cnn(seed, data, trainable_list=[]):
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
-        keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same', trainable=trainable_list[8]),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=trainable_list[9]),
-
-        keras.layers.Conv2D(32, (3, 3), activation='relu', kernel_initializer=initializer,
-                            padding='same', trainable=trainable_list[10]),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=trainable_list[11]),
-
-        keras.layers.MaxPooling2D(2, 2),
-        keras.layers.Dropout(0.2),
-
         keras.layers.Flatten(),
 
         # output layer
         keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                           kernel_initializer=initializer, trainable=trainable_list[12]),
+                           kernel_initializer=initializer, trainable=trainable_list[8]),
 
         keras.layers.Activation(keras.activations.softmax)
     ])

@@ -39,7 +39,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     y_train = y_train[shuffle_list]
 
     # program hyperparameters
-    num_trainable_layer = 7
+    num_trainable_layer = 5
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 64
     result_list = []
@@ -48,7 +48,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     for crossover in crossover_types:
         print("crossover method: " + crossover)
-        for safety_level in ["safe_crossover", "unsafe_crossover"]:
+        for safety_level in ["safe_crossover", "unsafe_crossover", "naive_crossover"]:
 
             depth = 0
 
@@ -81,9 +81,9 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     model_offspring_two.set_weights(random_new_weights_two)
 
                 # when the last layer has been transplanted, we fully train the network until convergence.
-                epochs_per_layer = 1
-                if layer == 5:
-                    epochs_per_layer = 1
+                epochs_per_layer = 10
+                if layer == 3:
+                    epochs_per_layer = 20
 
                 model_information_offspring_one = model_offspring_one.fit(x_train, y_train,
                                                                           batch_size=batch_size_sgd,
@@ -177,7 +177,7 @@ if __name__ == "__main__":
     elif data == "mnist":
         x_train, x_test, y_train, y_test = load_mnist()
 
-    num_processes = 1
+    num_processes = 10
 
     start = timer()
 
