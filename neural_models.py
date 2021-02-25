@@ -19,36 +19,13 @@ def lr_scheduler(epoch, learning_rate=0.1, lr_drop=20):
     return new_lr
 
 
-def linear_classifier_keras(seed, input_size, data):
-    # for mnist and cifar10
-    output_size = 10
-    if data == "cifar100":
-        output_size = 20
-
-    initializer = keras.initializers.glorot_normal(seed=seed)
-
-    model = keras.models.Sequential([
-
-        keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
-                           trainable=True, kernel_initializer=initializer, input_shape=(input_size,)),
-
-        keras.layers.Activation(keras.activations.softmax)
-    ])
-
-    adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
-    model.compile(optimizer=adam, loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy', 'sparse_categorical_crossentropy'])
-
-    return model
-
-
 def keras_model_cnn(seed, data, trainable_list=[]):
 
     num_trainable_layers = 5
     input_shape = (32, 32, 3)
     output_size = 10
     if data == "cifar100":
-        output_size = 20
+        output_size = 100
 
     if len(trainable_list) == 0:
         trainable_list = [True] * (num_trainable_layers*2-1)

@@ -44,7 +44,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     batch_size_sgd = 64
     result_list = []
 
-    crossover_types = ["targeted_crossover_low_corr", "targeted_crossover_random"]
+    crossover_types = ["targeted_crossover_low_corr"]
 
     for crossover in crossover_types:
         print("crossover method: " + crossover)
@@ -60,11 +60,9 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 print("the layer number is: " + str(layer))
 
-                #trainable_list = [True] * (num_trainable_layer * 2 - 1)
-                #if layer > 1:
-                #    trainable_list[:(layer-1) * 2] = [False] * len(trainable_list[:(layer-1) * 2])
-
-                #print(trainable_list)
+                trainable_list = [True] * (num_trainable_layer * 2 - 1)
+                if layer > 1:
+                    trainable_list[:(layer-1) * 2] = [False] * len(trainable_list[:(layer-1) * 2])
 
                 model_offspring_one = keras_model_cnn(work_id + num_pairs, data)
                 model_offspring_two = keras_model_cnn(work_id + (2 * num_pairs), data)
@@ -83,7 +81,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 # when the last layer has been transplanted, we fully train the network until convergence.
                 epochs_per_layer = 10
                 if layer == 3:
-                    epochs_per_layer = 20
+                    epochs_per_layer = 50
 
                 model_information_offspring_one = model_offspring_one.fit(x_train, y_train,
                                                                           batch_size=batch_size_sgd,
@@ -119,8 +117,6 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
                                    range(len(list_ordered_indices_two))]
 
-                # compute the q values for each layer (we use the same q values for naive alignment too)
-                # q_values_list[layer:] = compute_q_values(list_cross_corr)[layer:]
                 q_values_list = [0.2] * len(list_cross_corr)
 
                 if crossover == "targeted_crossover_low_corr":
@@ -168,7 +164,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
 if __name__ == "__main__":
 
-    data = "cifar10"
+    data = "cifar100"
 
     if data == "cifar10":
         x_train, x_test, y_train, y_test = load_cifar()
