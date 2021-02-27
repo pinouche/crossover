@@ -79,9 +79,9 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     model_offspring_two.set_weights(random_new_weights_two)
 
                 # when the last layer has been transplanted, we fully train the network until convergence.
-                epochs_per_layer = 10
+                epochs_per_layer = 5
                 if layer == 3:
-                    epochs_per_layer = 50
+                    epochs_per_layer = 10
 
                 model_information_offspring_one = model_offspring_one.fit(x_train, y_train,
                                                                           batch_size=batch_size_sgd,
@@ -164,7 +164,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
 if __name__ == "__main__":
 
-    data = "cifar100"
+    data = "cifar10"
 
     if data == "cifar10":
         x_train, x_test, y_train, y_test = load_cifar()
