@@ -112,7 +112,7 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_
 
             if len(untransplanted_neurons) > 0:
                 index_transplant = untransplanted_neurons[0]
-                print(redundant_corr, transplant_corr[indices.index(index_transplant)])
+                #  print(redundant_corr, transplant_corr[indices.index(index_transplant)])
 
                 if redundant_corr < transplant_corr[indices.index(index_transplant)]:
                     break

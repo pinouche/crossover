@@ -40,6 +40,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     # program hyperparameters
     num_trainable_layer = 5
+    num_epochs = num_trainable_layer
+    num_epoch_before_transplant = 1
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 64
     result_list = []
@@ -49,49 +51,37 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     for crossover in crossover_types:
         print("crossover method: " + crossover)
         for safety_level in ["safe_crossover", "unsafe_crossover", "naive_crossover"]:
-
-            depth = 0
-
             print(safety_level)
 
             loss_list = []
+            for epoch in range(num_epochs):
 
-            for layer in range(num_trainable_layer - 1):
+                print("the layer number is: " + str(epoch))
 
-                print("the layer number is: " + str(layer))
-
-                trainable_list = [True] * (num_trainable_layer * 2 - 1)
-                if layer > 1:
-                    trainable_list[:(layer-1) * 2] = [False] * len(trainable_list[:(layer-1) * 2])
-
+                # reset upper layers to random initialization
                 model_offspring_one = keras_model_cnn(work_id + num_pairs, data)
                 model_offspring_two = keras_model_cnn(work_id + (2 * num_pairs), data)
 
-                if layer > 0:
+                if epoch == 0:
+                    weights_offspring_one = model_offspring_one.get_weights()
+                    weights_offspring_two = model_offspring_two.get_weights()
+
+                if epoch > 0:
                     # get the randomly reset weights
-                    random_new_weights_one = model_offspring_one.get_weights()
-                    random_new_weights_two = model_offspring_two.get_weights()
-
-                    random_new_weights_one[:layer*6] = weights_offspring_one[:layer*6]
-                    random_new_weights_two[:layer*6] = weights_offspring_two[:layer*6]
-
-                    model_offspring_one.set_weights(random_new_weights_one)
-                    model_offspring_two.set_weights(random_new_weights_two)
+                    model_offspring_one.set_weights(weights_offspring_one)
+                    model_offspring_two.set_weights(weights_offspring_two)
 
                 # when the last layer has been transplanted, we fully train the network until convergence.
-                epochs_per_layer = 5
-                if layer == 3:
-                    epochs_per_layer = 10
 
                 model_information_offspring_one = model_offspring_one.fit(x_train, y_train,
                                                                           batch_size=batch_size_sgd,
-                                                                          epochs=epochs_per_layer,
+                                                                          epochs=num_epoch_before_transplant,
                                                                           verbose=2,
                                                                           validation_data=(x_test, y_test))
 
                 model_information_offspring_two = model_offspring_two.fit(x_train, y_train,
                                                                           batch_size=batch_size_sgd,
-                                                                          epochs=epochs_per_layer,
+                                                                          epochs=num_epoch_before_transplant,
                                                                           verbose=2,
                                                                           validation_data=(x_test, y_test))
 
@@ -138,21 +128,18 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 weights_offspring_one_tmp = copy.deepcopy(weights_offspring_one)
                 weights_offspring_two_tmp = copy.deepcopy(weights_offspring_two)
 
-                # transplant offspring one
-                weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
-                                                           list_neurons_to_remove_one, layer, depth)
+                depth = 0
+                for layer in range(num_trainable_layer - 1):
 
-                # transplant offspring two
-                weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
-                                                           list_neurons_to_remove_two, layer, depth)
+                    # transplant offspring one
+                    weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
+                                                               list_neurons_to_remove_one, layer, depth)
 
-                depth = (layer + 1) * 6
+                    # transplant offspring two
+                    weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
+                                                               list_neurons_to_remove_two, layer, depth)
 
-                list_ordered_indices_one, list_ordered_indices_two, weights_offspring_one, weights_offspring_two = crossover_method(
-                            weights_offspring_one,
-                            weights_offspring_two,
-                            list_cross_corr,
-                            safety_level)
+                    depth = (layer + 1) * 6
 
             loss_list = [val for sublist in loss_list for val in sublist]
             result_list.append(loss_list)
@@ -173,7 +160,7 @@ if __name__ == "__main__":
     elif data == "mnist":
         x_train, x_test, y_train, y_test = load_mnist()
 
-    num_processes = 10
+    num_processes = 1
 
     start = timer()
 
