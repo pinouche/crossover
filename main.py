@@ -9,9 +9,9 @@ import copy
 from keras.models import load_model
 import keras
 
-from utils import load_cifar
-from utils import load_mnist
-from utils import load_cifar_100
+from load_data import load_cifar
+from load_data import load_mnist
+from load_data import load_cifar_100
 
 from utils import identify_interesting_neurons
 from utils import transplant_neurons
