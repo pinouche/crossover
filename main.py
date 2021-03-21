@@ -8,6 +8,7 @@ import copy
 
 from keras.models import load_model
 import keras
+from keras.preprocessing.image import ImageDataGenerator
 
 from load_data import load_cifar
 from load_data import load_mnist
@@ -38,12 +39,15 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     x_train = x_train[shuffle_list]
     y_train = y_train[shuffle_list]
 
+    datagen = ImageDataGenerator(rotation_range=15, horizontal_flip=True, width_shift_range=0.1, height_shift_range=0.1)
+    datagen.fit(x_train)
+
     # program hyperparameters
     num_trainable_layer = 5
     num_transplants = 1
     num_epoch_before_transplant = 10
     batch_size_activation = 512  # batch_size to compute the activation maps
-    batch_size_sgd = 64
+    batch_size_sgd = 128
     result_list = []
 
     crossover_types = ["targeted_crossover_low_corr"]
@@ -68,17 +72,16 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 # when the last layer has been transplanted, we fully train the network until convergence.
 
-                model_information_offspring_one = model_offspring_one.fit(x_train, y_train,
-                                                                          batch_size=batch_size_sgd,
-                                                                          epochs=num_epoch_before_transplant,
-                                                                          verbose=2,
-                                                                          validation_data=(x_test, y_test))
+                # train with image augmentation
+                model_information_offspring_one = model_offspring_one.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size_sgd),
+                                                                                    steps_per_epoch=len(x_train)/batch_size_sgd,
+                                                                                    epochs=num_epoch_before_transplant,
+                                                                                    verbose=2, validation_data=(x_test, y_test))
 
-                model_information_offspring_two = model_offspring_two.fit(x_train, y_train,
-                                                                          batch_size=batch_size_sgd,
-                                                                          epochs=num_epoch_before_transplant,
-                                                                          verbose=2,
-                                                                          validation_data=(x_test, y_test))
+                model_information_offspring_two = model_offspring_two.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size_sgd),
+                                                                                    steps_per_epoch=len(x_train) / batch_size_sgd,
+                                                                                    epochs=num_epoch_before_transplant,
+                                                                                    verbose=2, validation_data=(x_test, y_test))
 
                 loss_list.append(model_information_offspring_one.history["val_loss"])
                 loss_list.append(model_information_offspring_two.history["val_loss"])

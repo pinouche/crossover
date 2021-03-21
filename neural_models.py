@@ -55,6 +55,10 @@ def keras_model_cnn(seed, data):
 
         keras.layers.Flatten(),
 
+        keras.layers.Dense(128, activation='relu', use_bias=True, kernel_initializer=initializer, trainable=True),
+        keras.layers.BatchNormalization(momentum=0.9, trainable=True),
+        keras.layers.Dropout(0.5),
+
         # output layer
         keras.layers.Dense(output_size, activation=keras.activations.linear, use_bias=False,
                            kernel_initializer=initializer, trainable=True),
