@@ -233,7 +233,7 @@ def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, ind
                                                                                  indices_transplant[layer], :]
             else:  # this is for the flattened fully connected layer
 
-                num_filters = 32
+                num_filters = 64
                 activation_map_size = int(weakest_weights_copy[index + depth].shape[0] / num_filters)
 
                 for i in range(len(indices_transplant[layer])):

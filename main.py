@@ -40,8 +40,8 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     # program hyperparameters
     num_trainable_layer = 5
-    num_epochs = num_trainable_layer
-    num_epoch_before_transplant = 1
+    num_transplants = 1
+    num_epoch_before_transplant = 10
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 64
     result_list = []
@@ -54,17 +54,12 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
             print(safety_level)
 
             loss_list = []
-            for epoch in range(num_epochs):
-
-                print("the layer number is: " + str(epoch))
+            for epoch in range(num_transplants+1):
+                print("Transplant number: " + str(epoch+1))
 
                 # reset upper layers to random initialization
                 model_offspring_one = keras_model_cnn(work_id + num_pairs, data)
                 model_offspring_two = keras_model_cnn(work_id + (2 * num_pairs), data)
-
-                if epoch == 0:
-                    weights_offspring_one = model_offspring_one.get_weights()
-                    weights_offspring_two = model_offspring_two.get_weights()
 
                 if epoch > 0:
                     # get the randomly reset weights
