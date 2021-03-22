@@ -6,7 +6,8 @@ import pickle
 import os
 import copy
 
-from keras.models import load_model
+import tensorflow as tf
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 import keras
 from keras.preprocessing.image import ImageDataGenerator
 
@@ -27,7 +28,7 @@ from neural_models import keras_model_cnn
 warnings.filterwarnings("ignore")
 
 
-def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id, data_struc):
+def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_id=0):
     # shuffle input data here
 
     num_pairs = len(pair_list)
@@ -73,13 +74,11 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 # when the last layer has been transplanted, we fully train the network until convergence.
 
                 # train with image augmentation
-                model_information_offspring_one = model_offspring_one.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size_sgd),
-                                                                                    steps_per_epoch=len(x_train)/batch_size_sgd,
+                model_information_offspring_one = model_offspring_one.fit(x_train, y_train, batch_size=batch_size_sgd,
                                                                                     epochs=num_epoch_before_transplant,
                                                                                     verbose=2, validation_data=(x_test, y_test))
 
-                model_information_offspring_two = model_offspring_two.fit_generator(datagen.flow(x_train, y_train, batch_size=batch_size_sgd),
-                                                                                    steps_per_epoch=len(x_train) / batch_size_sgd,
+                model_information_offspring_two = model_offspring_two.fit(x_train, y_train, batch_size=batch_size_sgd,
                                                                                     epochs=num_epoch_before_transplant,
                                                                                     verbose=2, validation_data=(x_test, y_test))
 
@@ -144,11 +143,11 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
         keras.backend.clear_session()
 
-    data_struc[str(work_id) + "_performance"] = result_list
-
+    #data_struc[str(work_id) + "_performance"] = result_list
+    return result_list
 
 if __name__ == "__main__":
-
+    
     data = "cifar10"
 
     if data == "cifar10":
@@ -162,23 +161,25 @@ if __name__ == "__main__":
 
     start = timer()
 
-    manager = multiprocessing.Manager()
-    return_dict = manager.dict()
+    #manager = multiprocessing.Manager()
+    #return_dict = manager.dict()
 
     pair_list = [pair for pair in range(num_processes)]
 
-    p = [multiprocessing.Process(target=crossover_offspring, args=(data, x_train, y_train, x_test, y_test,
-                                                                   pair_list, i,
-                                                                   return_dict)) for i in range(num_processes)]
+    #p = [multiprocessing.Process(target=crossover_offspring, args=(data, x_train, y_train, x_test, y_test,
+    #                                                               pair_list, i,
+    #                                                               return_dict)) for i in range(num_processes)]
 
-    for proc in p:
-        proc.start()
-    for proc in p:
-        proc.join()
+    #for proc in p:
+    #    proc.start()
+    #for proc in p:
+    #    proc.join()
 
-    results = return_dict.values()
+    #results = return_dict.values()
 
-    pickle.dump(results, open("crossover_results.pickle", "wb"))
+    results = crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list)
+
+    #pickle.dump(results, open("crossover_results.pickle", "wb"))
 
     end = timer()
     print(end - start)
