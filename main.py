@@ -21,6 +21,7 @@ from utils import get_hidden_layers
 from utils import match_random_filters
 from utils import get_corr_cnn_filters
 from utils import crossover_method
+from utils import arithmetic_crossover
 
 from neural_models import keras_model_cnn
 
@@ -45,13 +46,20 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     # program hyperparameters
     num_trainable_layer = 5
-    num_transplants = 2
-    num_epoch_before_transplant = 10
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 128
     result_list = []
 
-    crossover_types = ["targeted_crossover_random"]
+    # crossover_types = ["targeted_crossover_low_corr"]
+    # crossover_types = ["targeted_crossover_random"]
+    crossover_types = ["arithmetic_crossover"]
+
+    if crossover_types[0] == "arithmetic_crossover":
+        num_transplants = 0
+        num_epoch_before_crossover = 1
+    else:
+        num_transplants = 1
+        num_epoch_before_crossover = 1
 
     for crossover in crossover_types:
         print("crossover method: " + crossover)
@@ -78,11 +86,11 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                 # train with image augmentation
                 model_information_offspring_one = model_offspring_one.fit(x_train, y_train, batch_size=batch_size_sgd,
-                                                                                    epochs=num_epoch_before_transplant,
+                                                                                    epochs=num_epoch_before_crossover,
                                                                                     verbose=2, validation_data=(x_test, y_test))
 
                 model_information_offspring_two = model_offspring_two.fit(x_train, y_train, batch_size=batch_size_sgd,
-                                                                                    epochs=num_epoch_before_transplant,
+                                                                                    epochs=num_epoch_before_crossover,
                                                                                     verbose=2, validation_data=(x_test, y_test))
                 
                 loss_one = model_information_offspring_one.history["val_loss"]
@@ -132,31 +140,45 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     list_neurons_to_transplant_one, list_neurons_to_remove_one = match_random_filters(q_values_list, list_cross_corr)
                     list_neurons_to_transplant_two, list_neurons_to_remove_two = match_random_filters(q_values_list, list_cross_corr)
 
-                weights_offspring_one_tmp = copy.deepcopy(weights_offspring_one)
-                weights_offspring_two_tmp = copy.deepcopy(weights_offspring_two)
+                if crossover == "arithmetic_crossover":
+                    weights_offspring = arithmetic_crossover(weights_offspring_one, weights_offspring_two)
 
-                depth = 0
-                for layer in range(num_trainable_layer - 1):
+                    model_offspring = keras_model_cnn(0, data)
+                    model_offspring.set_weights(weights_offspring)
+                    loss_after_transplant_one = model_offspring_one.evaluate(x_test, y_test)[0]
 
-                    # transplant offspring one
-                    weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
-                                                               list_neurons_to_remove_one, layer, depth)
+                    model_information_offspring = model_offspring.fit(x_train, y_train, batch_size=batch_size_sgd,
+                                                                      epochs=num_epoch_before_crossover,
+                                                                      verbose=2, validation_data=(x_test, y_test))
 
-                    # transplant offspring two
-                    weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
-                                                               list_neurons_to_remove_two, layer, depth)
+                    loss = model_information_offspring.history["val_loss"]
+                    loss.insert(0, loss_after_transplant_one)
+                    loss_list.append(loss)
 
-                    depth = (layer + 1) * 6
-                    
-                
+                else:
 
-            #loss_list = [val for sublist in loss_list for val in sublist]
+                    weights_offspring_one_tmp = copy.deepcopy(weights_offspring_one)
+                    weights_offspring_two_tmp = copy.deepcopy(weights_offspring_two)
+
+                    depth = 0
+                    for layer in range(num_trainable_layer - 1):
+
+                        # transplant offspring one
+                        weights_offspring_one = transplant_neurons(weights_offspring_one, weights_offspring_two_tmp, list_neurons_to_transplant_one,
+                                                                   list_neurons_to_remove_one, layer, depth)
+
+                        # transplant offspring two
+                        weights_offspring_two = transplant_neurons(weights_offspring_two, weights_offspring_one_tmp, list_neurons_to_transplant_two,
+                                                                   list_neurons_to_remove_two, layer, depth)
+
+                        depth = (layer + 1) * 6
+
             result_list.append(loss_list)
 
         keras.backend.clear_session()
 
-    #data_struc[str(work_id) + "_performance"] = result_list
     return result_list
+
 
 if __name__ == "__main__":
     
@@ -173,21 +195,7 @@ if __name__ == "__main__":
 
     start = timer()
 
-    #manager = multiprocessing.Manager()
-    #return_dict = manager.dict()
-
     pair_list = [pair for pair in range(num_processes)]
-
-    #p = [multiprocessing.Process(target=crossover_offspring, args=(data, x_train, y_train, x_test, y_test,
-    #                                                               pair_list, i,
-    #                                                               return_dict)) for i in range(num_processes)]
-
-    #for proc in p:
-    #    proc.start()
-    #for proc in p:
-    #    proc.join()
-
-    #results = return_dict.values()
 
     results = crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list)
 

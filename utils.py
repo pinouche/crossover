@@ -246,6 +246,16 @@ def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, ind
     return fittest_weights
 
 
+def arithmetic_crossover(fittest_weights, weakest_weights):
+
+    array_one = np.array(fittest_weights)
+    array_two = np.array(weakest_weights)
+
+    new_weights = (array_one + array_two)/2
+
+    return new_weights
+
+
 def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
 
     list_ordered_indices_one = []
