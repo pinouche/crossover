@@ -32,31 +32,30 @@ def keras_model_cnn(seed, data):
 
     model = keras.models.Sequential([
 
-        keras.layers.Conv2D(num_filters, (3, 3), activation='relu', kernel_initializer=initializer,
+        keras.layers.Conv2D(num_filters, (5, 5), activation='selu', kernel_initializer=initializer,
                             padding='same', input_shape=input_shape, trainable=True),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=True),
-        keras.layers.Conv2D(num_filters, (3, 3), activation='relu', kernel_initializer=initializer,
+        keras.layers.BatchNormalization(),
+        keras.layers.Conv2D(num_filters, (5, 5), activation='selu', kernel_initializer=initializer,
                             padding='same', trainable=True),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=True),
+        keras.layers.BatchNormalization(),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
-        keras.layers.Conv2D(num_filters, (3, 3), activation='relu', kernel_initializer=initializer,
+        keras.layers.Conv2D(num_filters, (5, 5), activation='selu', kernel_initializer=initializer,
                             padding='same', trainable=True),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=True),
+        keras.layers.BatchNormalization(),
 
-        keras.layers.Conv2D(num_filters, (3, 3), activation='relu', kernel_initializer=initializer,
+        keras.layers.Conv2D(num_filters, (5, 5), activation='selu', kernel_initializer=initializer,
                             padding='same', trainable=True),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=True),
+        keras.layers.BatchNormalization(),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
         keras.layers.Flatten(),
 
-        keras.layers.Dense(128, activation='relu', use_bias=True, kernel_initializer=initializer, trainable=True),
-        keras.layers.BatchNormalization(momentum=0.9, trainable=True),
+        keras.layers.Dense(64, activation='selu', use_bias=True, kernel_initializer=initializer, trainable=True),
         keras.layers.Dropout(0.5),
 
         # output layer

@@ -130,7 +130,7 @@ def match_random_filters(q_value_list, list_cross_corr):
 def get_corr_cnn_filters(hidden_representation_list_one, hidden_representation_list_two):
     list_corr_matrices = []
 
-    for layer_id in range(len(hidden_representation_list_one) - 1):
+    for layer_id in range(len(hidden_representation_list_one) - 2):
 
         batch_size = hidden_representation_list_one[layer_id].shape[0]
         size_activation_map = hidden_representation_list_one[layer_id].shape[1]
@@ -183,8 +183,8 @@ def bipartite_matching(corr_matrix_nn, crossover="safe_crossover"):
 # Algorithm 2
 def permute_cnn(weights_list_copy, list_permutation):
     depth = 0
-
     for layer in range(len(list_permutation)):
+        print(layer)
         for index in range(7):
             if index == 0:
                 # order filters
@@ -193,7 +193,7 @@ def permute_cnn(weights_list_copy, list_permutation):
                 # order the biases and the batch norm parameters
                 weights_list_copy[index + depth] = weights_list_copy[index + depth][list_permutation[layer]]
             elif index == 6:
-                if (index + depth) != (len(weights_list_copy) - 1):
+                if (index + depth) != (len(weights_list_copy) - 3):
                     # order channels
                     weights_list_copy[index + depth] = weights_list_copy[index + depth][:, :, list_permutation[layer],
                                                        :]
@@ -227,7 +227,7 @@ def transplant_neurons(fittest_weights, weakest_weights, indices_transplant, ind
             fittest_weights[index + depth][indices_remove[layer]] = weakest_weights_copy[index + depth][
                 indices_transplant[layer]]
         elif index == 6:
-            if (index + depth) != (len(fittest_weights) - 1):
+            if (index + depth) != (len(fittest_weights) - 3):
                 # order channels
                 fittest_weights[index + depth][:, :, indices_remove[layer], :] = weakest_weights_copy[index + depth][:, :,
                                                                                  indices_transplant[layer], :]

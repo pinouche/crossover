@@ -45,17 +45,17 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     # program hyperparameters
     num_trainable_layer = 5
-    num_transplants = 1
+    num_transplants = 2
     num_epoch_before_transplant = 10
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 128
     result_list = []
 
-    crossover_types = ["targeted_crossover_low_corr"]
+    crossover_types = ["targeted_crossover_random"]
 
     for crossover in crossover_types:
         print("crossover method: " + crossover)
-        for safety_level in ["safe_crossover", "unsafe_crossover", "naive_crossover"]:
+        for safety_level in ["safe_crossover", "unsafe_crossover"]:
             print(safety_level)
 
             loss_list = []
@@ -71,6 +71,9 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     model_offspring_one.set_weights(weights_offspring_one)
                     model_offspring_two.set_weights(weights_offspring_two)
 
+                    loss_after_transplant_one = model_offspring_one.evaluate(x_test, y_test)[0]
+                    loss_after_transplant_two = model_offspring_two.evaluate(x_test, y_test)[0]
+
                 # when the last layer has been transplanted, we fully train the network until convergence.
 
                 # train with image augmentation
@@ -81,9 +84,16 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 model_information_offspring_two = model_offspring_two.fit(x_train, y_train, batch_size=batch_size_sgd,
                                                                                     epochs=num_epoch_before_transplant,
                                                                                     verbose=2, validation_data=(x_test, y_test))
+                
+                loss_one = model_information_offspring_one.history["val_loss"]
+                loss_two = model_information_offspring_two.history["val_loss"]
 
-                loss_list.append(model_information_offspring_one.history["val_loss"])
-                loss_list.append(model_information_offspring_two.history["val_loss"])
+                if epoch > 0:
+                    loss_one.insert(0, loss_after_transplant_one)
+                    loss_two.insert(0, loss_after_transplant_two)
+
+                loss_list.append(loss_one)
+                loss_list.append(loss_two)
 
                 weights_offspring_one = model_offspring_one.get_weights()
                 weights_offspring_two = model_offspring_two.get_weights()
@@ -104,7 +114,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                 list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_two[index]] for index in
                                    range(len(list_ordered_indices_two))]
 
-                q_values_list = [0.2] * len(list_cross_corr)
+                q_values_list = [0.5] * len(list_cross_corr)
 
                 if crossover == "targeted_crossover_low_corr":
                     # identify neurons to transplant from offspring two to offspring one
@@ -137,8 +147,10 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                                                                list_neurons_to_remove_two, layer, depth)
 
                     depth = (layer + 1) * 6
+                    
+                
 
-            loss_list = [val for sublist in loss_list for val in sublist]
+            #loss_list = [val for sublist in loss_list for val in sublist]
             result_list.append(loss_list)
 
         keras.backend.clear_session()
@@ -179,7 +191,7 @@ if __name__ == "__main__":
 
     results = crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list)
 
-    #pickle.dump(results, open("crossover_results.pickle", "wb"))
+    pickle.dump(results, open("crossover_results.pickle", "wb"))
 
     end = timer()
     print(end - start)
