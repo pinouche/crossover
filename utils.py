@@ -184,7 +184,6 @@ def bipartite_matching(corr_matrix_nn, crossover="safe_crossover"):
 def permute_cnn(weights_list_copy, list_permutation):
     depth = 0
     for layer in range(len(list_permutation)):
-        print(layer)
         for index in range(7):
             if index == 0:
                 # order filters

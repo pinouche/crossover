@@ -56,7 +56,7 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
     if crossover_types[0] == "arithmetic_crossover":
         num_transplants = 0
-        num_epoch_before_crossover = 1
+        num_epoch_before_crossover = 20
     else:
         num_transplants = 1
         num_epoch_before_crossover = 1
@@ -145,14 +145,14 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
 
                     model_offspring = keras_model_cnn(0, data)
                     model_offspring.set_weights(weights_offspring)
-                    loss_after_transplant_one = model_offspring_one.evaluate(x_test, y_test)[0]
+                    loss_after_transplant = model_offspring.evaluate(x_test, y_test)[0]
 
                     model_information_offspring = model_offspring.fit(x_train, y_train, batch_size=batch_size_sgd,
                                                                       epochs=num_epoch_before_crossover,
                                                                       verbose=2, validation_data=(x_test, y_test))
 
                     loss = model_information_offspring.history["val_loss"]
-                    loss.insert(0, loss_after_transplant_one)
+                    loss.insert(0, loss_after_transplant)
                     loss_list.append(loss)
 
                 else:
