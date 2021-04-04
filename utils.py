@@ -250,8 +250,9 @@ def arithmetic_crossover(fittest_weights, weakest_weights, t=0.5):
     array_one = np.array(fittest_weights)
     array_two = np.array(weakest_weights)
 
-    # the scale factor is to keep the same
-    scale_factor = np.sqrt(1 / (np.power(t, 2) + np.power(1 - t, 2)))
+    # the scale factor is to keep the same variance
+    # scale_factor = np.sqrt(1 / (np.power(t, 2) + np.power(1 - t, 2)))
+    scale_factor = 1
     new_weights = (t * array_one + (1 - t) * array_two) * scale_factor
 
     return new_weights

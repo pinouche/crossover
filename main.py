@@ -50,21 +50,21 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
     batch_size_sgd = 128
     result_list = []
 
-    num_transplants = 2
-    num_epoch_before_crossover = 10
+    num_transplants = 10
+    num_epoch_before_crossover = 1
 
     # crossover_types = ["targeted_crossover_low_corr"]
-    # crossover_types = ["targeted_crossover_random"]
-    crossover_types = ["arithmetic_crossover"]
+    crossover_types = ["targeted_crossover_random"]
+    # crossover_types = ["arithmetic_crossover"]
 
     for crossover in crossover_types:
         print("crossover method: " + crossover)
-        for safety_level in ["safe_crossover", "unsafe_crossover"]:
+        for safety_level in ["safe_crossover", "naive_crossover"]:
             print(safety_level)
 
             loss_list = []
             for epoch in range(num_transplants+1):
-                print("Transplant number: " + str(epoch+1))
+                print("Transplant number: " + str(epoch))
 
                 # reset upper layers to random initialization
                 model_offspring_one = keras_model_cnn(work_id + num_pairs, data)
@@ -78,9 +78,15 @@ def crossover_offspring(data, x_train, y_train, x_test, y_test, pair_list, work_
                     loss_after_transplant_one = model_offspring_one.evaluate(x_test, y_test)[0]
                     loss_after_transplant_two = model_offspring_two.evaluate(x_test, y_test)[0]
 
-                # when the last layer has been transplanted, we fully train the network until convergence.
+                    if epoch == num_transplants and crossover == "arithmetic_crossover":
+                        improvement = ((loss_after_transplant_one-min(loss_one[-1], loss_two[-1]))/loss_one[-1])*-100
+                        print("IMPROVEMENT: ", improvement)
 
-                # train with image augmentation
+                        break
+
+
+                #callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=False)
+
                 model_information_offspring_one = model_offspring_one.fit(x_train, y_train, batch_size=batch_size_sgd,
                                                                                     epochs=num_epoch_before_crossover,
                                                                                     verbose=2, validation_data=(x_test, y_test))
