@@ -7,7 +7,6 @@ import copy
 import tensorflow as tf
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 import keras
-from keras.preprocessing.image import ImageDataGenerator
 
 from load_data import load_cifar
 from load_data import load_mnist

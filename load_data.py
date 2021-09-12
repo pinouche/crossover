@@ -8,8 +8,8 @@ def load_mnist():
     return x_train, x_test, y_train, y_test
 
 
-def load_cifar_100():
-    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data()
+def load_cifar_100(label_mode="fine"):
+    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar100.load_data(label_mode)
     x_train = x_train.astype('float32')
     x_test = x_test.astype('float32')
 
