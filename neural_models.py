@@ -19,14 +19,10 @@ def lr_scheduler(epoch, learning_rate=0.1, lr_drop=20):
     return new_lr
 
 
-def keras_model_cnn(seed, data):
+def keras_model_cnn(seed, output_size):
 
     num_filters = 64
-
     input_shape = (32, 32, 3)
-    output_size = 10
-    if data == "cifar100":
-        output_size = 100
 
     initializer = keras.initializers.glorot_normal(seed=seed)
 
