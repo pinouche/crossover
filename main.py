@@ -39,12 +39,13 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
         model_main = keras_model_cnn(work_id, num_classes_main)
         model_subset = keras_model_cnn(work_id + 1000, num_classes_subset)
+        early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
         model_information_main = model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
-                                                verbose=2, validation_data=(data_main[2], data_main[3]))
+                                                verbose=2, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
 
         model_information_subset = model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
-                                                    verbose=2, validation_data=(data_subset[2], data_subset[3]))
+                                                    verbose=2, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
 
         loss_main = model_information_main.history["val_loss"]
         loss_subset = model_information_subset.history["val_loss"]
@@ -111,11 +112,11 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         # set the weights with the reset last layer
         model_main.set_weights(weights_main)
         loss_after_transplant = model_main.evaluate(data_full[2], data_full[3])[0]
-        loss_main.append(0, loss_after_transplant)
+        loss_main.append(loss_after_transplant)
 
         # train the newly transplanted network
         model_information_main = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
-                                                verbose=2, validation_data=(data_full[2], data_full[3]))
+                                                verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
 
         loss_main.append(model_information_main.history["val_loss"])
 
