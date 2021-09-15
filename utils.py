@@ -3,6 +3,7 @@ from scipy.optimize import linear_sum_assignment
 import keras
 import copy
 import random
+import operator
 
 
 def get_hidden_layers(model, data_x, batch_size):
@@ -275,4 +276,23 @@ def crossover_method(weights_one, weights_two, list_corr_matrices, crossover):
     list_ordered_w_two = permute_cnn(weights_nn_two_copy, list_ordered_indices_two)
 
     return list_ordered_indices_one, list_ordered_indices_two, list_ordered_w_one, list_ordered_w_two
+
+
+def compute_pareto(data):
+    sorted_data = sorted(data, key=operator.itemgetter(0, 1), reverse=False)
+    pareto_idx = list()
+    pareto_idx.append(0)
+
+    cutt_off_fitness = sorted_data[0][0]
+    cutt_off_length = sorted_data[0][1]
+
+    for i in range(1, len(sorted_data)):
+        if sorted_data[i][0] < cutt_off_fitness or sorted_data[i][1] < cutt_off_length:
+            pareto_idx.append(i)
+            if sorted_data[i][0] < cutt_off_fitness:
+                cutt_off_fitness = sorted_data[i][0]
+            else:
+                cutt_off_length = sorted_data[i][1]
+
+    return np.array(sorted_data), pareto_idx
 

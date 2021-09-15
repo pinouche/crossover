@@ -105,9 +105,12 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
                 depth = (layer + 1) * 6
 
+        print("COMPUTING FOR TRANSPLANTING METHOD")
+
         # reset upper layers to random initialization
         model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])))
-        weights_main[-1] = model_main.get_weights()[-1]
+        random_init_weights = model_main.get_weights()[:-2]
+        weights_main[:-2] = random_init_weights
 
         # set the weights with the reset last layer
         model_main.set_weights(weights_main)
@@ -119,6 +122,18 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
                                                 verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
 
         loss_main.append(model_information_main.history["val_loss"])
+
+        print("COMPUTING FOR BASELINE METHOD")
+
+        model_main_baseline = keras_model_cnn(work_id, len(np.unique(data_full[1])))
+        weights_main_tmp[:-2] = random_init_weights
+
+        model_main_baseline.set_weights(weights_main_tmp)
+        loss_baseline = model_main.evaluate(data_full[2], data_full[3])[0]
+
+        # train the newly transplanted network
+        model_information_baseline = model_main_baseline.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+                                                verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
 
         loss_list.append(loss_main)
         loss_list.append(loss_subset)
@@ -139,8 +154,6 @@ def crossover_offspring(data_main, data_subset, data_full, work_id=0):
 
     num_transplants = 1
 
-    # crossover = "targeted_crossover_low_corr"
-    # crossover = "targeted_crossover_random"
     crossover = "targeted_crossover_low_corr"
 
     result_list = transplant_crossover(crossover, data_main, data_subset, data_full, num_transplants, num_trainable_layer,
