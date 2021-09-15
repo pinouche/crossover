@@ -109,8 +109,8 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
         # reset upper layers to random initialization
         model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])))
-        random_init_weights = model_main.get_weights()[:-2]
-        weights_main[:-2] = random_init_weights
+        random_init_weights = model_main.get_weights()[-2:]
+        weights_main[-2:] = random_init_weights
 
         # set the weights with the reset last layer
         model_main.set_weights(weights_main)
@@ -126,7 +126,7 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         print("COMPUTING FOR BASELINE METHOD")
 
         model_main_baseline = keras_model_cnn(work_id, len(np.unique(data_full[1])))
-        weights_main_tmp[:-2] = random_init_weights
+        weights_main_tmp[-2:] = random_init_weights
 
         model_main_baseline.set_weights(weights_main_tmp)
         loss_baseline = model_main.evaluate(data_full[2], data_full[3])[0]
