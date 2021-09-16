@@ -15,21 +15,19 @@ from load_data import load_cifar_100
 from load_data import subset_classes
 from load_data import shift_labels
 
-from utils import identify_interesting_neurons
 from utils import transplant_neurons
 from utils import get_hidden_layers
 from utils import match_random_filters
 from utils import get_corr_cnn_filters
 from utils import crossover_method
+from utils import compute_neurons_variance
 
 from neural_models import keras_model_cnn
-from neural_models import keras_vgg
-from neural_models import lr_scheduler
 
 warnings.filterwarnings("ignore")
 
 
-def transplant_crossover(crossover, data_main, data_subset, data_full, num_transplants=1, num_trainable_layer=5, batch_size_activation=512,
+def transplant_crossover(crossover, data_main, data_subset, data_full, num_transplants=1, num_conv_layer=5, batch_size_activation=512,
                          batch_size_sgd=128, work_id=0):
     result_list = []
     print("crossover method: " + crossover)
@@ -39,20 +37,16 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         num_classes_main, num_classes_subset = len(np.unique(data_main[1])), len(np.unique(data_subset[1]))
         loss_list = []
 
-        model_main = keras_vgg(work_id, num_classes_main)
-        model_subset = keras_vgg(work_id + 1000, num_classes_subset)
-
-        weights_main = model_main.get_weights()
-        for w in weights_main:
-            print(w.shape)
+        model_main = keras_model_cnn(work_id, num_classes_main)
+        model_subset = keras_model_cnn(work_id + 1000, num_classes_subset)
 
         early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
-        model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
-                       verbose=2, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback, lr_scheduler])
+        model_main.fit(data_main[0][:64], data_main[1][:64], batch_size=batch_size_sgd, epochs=2,
+                       verbose=2, validation_data=(data_main[2][:64], data_main[3][:64]), callbacks=[early_stop_callback])
 
-        model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
-                         verbose=2, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback, lr_scheduler])
+        model_subset.fit(data_subset[0][:64], data_subset[1][:64], batch_size=batch_size_sgd, epochs=2,
+                         verbose=2, validation_data=(data_subset[2][:64], data_subset[3][:64]), callbacks=[early_stop_callback])
 
         for epoch in range(num_transplants):
 
@@ -64,8 +58,6 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
             hidden_representation_subset = get_hidden_layers(model_subset, x_test, batch_size_activation)
 
             list_cross_corr = get_corr_cnn_filters(hidden_representation_main, hidden_representation_subset)
-            self_corr_main = get_corr_cnn_filters(hidden_representation_main, hidden_representation_subset)
-            self_corr_subset = get_corr_cnn_filters(hidden_representation_main, hidden_representation_subset)
 
             # functionally align the networks
             list_ordered_indices_main, list_ordered_indices_subset, weights_main, weights_subset = crossover_method(
@@ -75,38 +67,37 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
             list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_subset[index]] for index in
                                range(len(list_ordered_indices_subset))]
 
+            # re-order hidden representation
+            hidden_representation_subset = [hidden_representation_subset[index][:, list_ordered_indices_subset[index]] for index in
+                                            range(len(list_ordered_indices_subset))]
+
             # proportion of filters to transfer: we set it to the subset class proportion. We can experiment with pareto using variance also, later.
-            q_values_list = [len(np.unique(data_subset[1])) / (len(np.unique(data_main[1])) + len(np.unique(data_subset[1])))] * len(list_cross_corr)
+            num_swap = (len(np.unique(data_subset[1])) / (len(np.unique(data_main[1])) + len(np.unique(data_subset[1])))) * list_cross_corr[0].shape[0]
 
-            if crossover == "targeted_crossover_low_corr":
-                # identify neurons to transplant from offspring two to offspring one
-                list_neurons_to_transplant_main, list_neurons_to_remove_main, num_swapped_main = identify_interesting_neurons(list_cross_corr,
-                                                                                                                              self_corr_main,
-                                                                                                                              self_corr_subset)
+            if crossover == "targeted_crossover_variance":
+                variance_filters_main = compute_neurons_variance(hidden_representation_main)
+                variance_filters_subset = compute_neurons_variance(hidden_representation_subset)
 
-                # identify neurons to transplant from offspring one to offspring two
-                list_cross_corr_transpose = [np.transpose(corr_matrix) for corr_matrix in list_cross_corr]
-                list_neurons_to_transplant_subset, list_neurons_to_remove_subset, num_swapped_subset = identify_interesting_neurons(
-                    list_cross_corr_transpose,
-                    self_corr_main,
-                    self_corr_subset)
+                neurons_to_remove_main = [np.argsort(variance_filters_main[index])[:num_swap] for index in range(variance_filters_main)]
+                neurons_to_transplant_main = [np.argsort(variance_filters_subset[index])[-num_swap:] for index in range(variance_filters_subset)]
 
             elif crossover == "targeted_crossover_random":
-                list_neurons_to_transplant_main, list_neurons_to_remove_main = match_random_filters(q_values_list, list_cross_corr)
-                list_neurons_to_transplant_subset, list_neurons_to_remove_subset = match_random_filters(q_values_list, list_cross_corr)
+                neurons_to_transplant_main, neurons_to_remove_main = match_random_filters(num_swap, list_cross_corr)
+                neurons_to_transplant_subset, neurons_to_remove_subset = match_random_filters(num_swap, list_cross_corr)
+
+            print(neurons_to_remove_main, neurons_to_transplant_main)
 
             weights_main_tmp = copy.deepcopy(weights_main)
             weights_subset_tmp = copy.deepcopy(weights_subset)
 
             depth = 0
-            for layer in range(num_trainable_layer - 1):
+            for layer in range(num_conv_layer):
                 # transplant offspring one
-                weights_main = transplant_neurons(weights_main, weights_subset_tmp, list_neurons_to_transplant_main,
-                                                  list_neurons_to_remove_main, layer, depth)
+                weights_main = transplant_neurons(weights_main, weights_subset_tmp, neurons_to_transplant_main, neurons_to_remove_main, layer, depth)
 
                 # transplant offspring two
-                weights_subset = transplant_neurons(weights_subset, weights_main_tmp, list_neurons_to_transplant_subset,
-                                                    list_neurons_to_remove_subset, layer, depth)
+                weights_subset = transplant_neurons(weights_subset, weights_main_tmp, neurons_to_transplant_subset, neurons_to_remove_subset,
+                                                    layer, depth)
 
                 depth = (layer + 1) * 6
 
@@ -118,10 +109,10 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
         weight_random_init_filters = copy.deepcopy(weights_main_tmp)
 
-        for index in range(num_trainable_layer - 1):
+        for index in range(num_conv_layer):
             layer = weight_random_init_filters[index * 6]
             filter_indices = np.array(range(layer.shape[-1]))
-            random_indices = np.random.choice(filter_indices, num_swapped_main[index], replace=False)
+            random_indices = np.random.choice(filter_indices, num_swap, replace=False)
 
             weight_random_init_filters[index * 6][:, :, :, random_indices] = random_init_weights[index * 6][:, :, :, random_indices]
 
@@ -172,7 +163,7 @@ def crossover_offspring(data_main, data_subset, data_full, work_id=0):
     np.random.seed(work_id + 1)
 
     # program hyperparameters
-    num_trainable_layer = 5
+    num_conv_layer = 1
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 64
 
@@ -180,7 +171,7 @@ def crossover_offspring(data_main, data_subset, data_full, work_id=0):
 
     crossover = "targeted_crossover_low_corr"
 
-    result_list = transplant_crossover(crossover, data_main, data_subset, data_full, num_transplants, num_trainable_layer,
+    result_list = transplant_crossover(crossover, data_main, data_subset, data_full, num_transplants, num_conv_layer,
                                        batch_size_activation, batch_size_sgd, work_id)
 
     return result_list
