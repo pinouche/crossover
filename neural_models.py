@@ -69,14 +69,11 @@ def keras_model_cnn(seed, output_size):
 
 
 # Build the network of vgg-16 with dropout and weight decay as described in the original paper.
-def keras_vgg(seed, data):
+
+def keras_vgg(seed, output_size):
     input_shape = (32, 32, 3)
     weight_decay = 0.0005
     initializer = keras.initializers.glorot_normal(seed=seed)
-
-    output_size = 10
-    if data == "cifar100":
-        output_size = 20
 
     model = keras.models.Sequential([
 

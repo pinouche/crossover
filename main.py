@@ -23,6 +23,7 @@ from utils import get_corr_cnn_filters
 from utils import crossover_method
 
 from neural_models import keras_model_cnn
+from neural_models import keras_vgg
 
 warnings.filterwarnings("ignore")
 
@@ -37,8 +38,8 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         num_classes_main, num_classes_subset = len(np.unique(data_main[1])), len(np.unique(data_subset[1]))
         loss_list = []
 
-        model_main = keras_model_cnn(work_id, num_classes_main)
-        model_subset = keras_model_cnn(work_id + 1000, num_classes_subset)
+        model_main = keras_vgg(work_id, num_classes_main)
+        model_subset = keras_vgg(work_id + 1000, num_classes_subset)
 
         weights_main = model_main.get_weights()
         for w in weights_main:
@@ -47,10 +48,10 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
         model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
-                       verbose=0, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
+                       verbose=2, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
 
         model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
-                         verbose=0, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
+                         verbose=2, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
 
         for epoch in range(num_transplants):
 
