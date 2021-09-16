@@ -68,7 +68,7 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
                                range(len(list_ordered_indices_subset))]
 
             # re-order hidden representation
-            hidden_representation_subset = [hidden_representation_subset[index][:, list_ordered_indices_subset[index]] for index in
+            hidden_representation_subset = [hidden_representation_subset[index][:, :, :, list_ordered_indices_subset[index]] for index in
                                             range(len(list_ordered_indices_subset))]
 
             # proportion of filters to transfer: we set it to the subset class proportion. We can experiment with pareto using variance also, later.
