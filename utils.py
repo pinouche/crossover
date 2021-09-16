@@ -106,10 +106,12 @@ def identify_interesting_neurons(list_cross_corr, list_self_corr_one, list_self_
         indices_neurons_low_corr.append(list_neurons_transplant)
         indices_neurons_redundant.append(list_neurons_remove)
 
-    print("NUMBER OF NEURONS SWAPPED")
-    print([len(indices_neurons_redundant[index]) for index in range(len(indices_neurons_redundant))])
+    num_neurons_swapped_per_layer = [len(indices_neurons_redundant[index]) for index in range(len(indices_neurons_redundant))]
 
-    return indices_neurons_low_corr, indices_neurons_redundant
+    print("NUMBER OF NEURONS SWAPPED")
+    print(num_neurons_swapped_per_layer)
+
+    return indices_neurons_low_corr, indices_neurons_redundant, num_neurons_swapped_per_layer
 
 
 def match_random_filters(q_value_list, list_cross_corr):

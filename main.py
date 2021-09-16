@@ -39,16 +39,18 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
         model_main = keras_model_cnn(work_id, num_classes_main)
         model_subset = keras_model_cnn(work_id + 1000, num_classes_subset)
+
+        weights_main = model_main.get_weights()
+        for w in weights_main:
+            print(w.shape)
+
         early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
-        model_information_main = model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
-                                                verbose=2, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
+        model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
+                       verbose=0, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
 
-        model_information_subset = model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
-                                                    verbose=2, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
-
-        loss_main = model_information_main.history["val_loss"]
-        loss_subset = model_information_subset.history["val_loss"]
+        model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
+                         verbose=0, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
 
         for epoch in range(num_transplants):
 
@@ -76,15 +78,16 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
             if crossover == "targeted_crossover_low_corr":
                 # identify neurons to transplant from offspring two to offspring one
-                list_neurons_to_transplant_main, list_neurons_to_remove_main = identify_interesting_neurons(list_cross_corr,
-                                                                                                            self_corr_main,
-                                                                                                            self_corr_subset)
+                list_neurons_to_transplant_main, list_neurons_to_remove_main, num_swapped_main = identify_interesting_neurons(list_cross_corr,
+                                                                                                                              self_corr_main,
+                                                                                                                              self_corr_subset)
 
                 # identify neurons to transplant from offspring one to offspring two
                 list_cross_corr_transpose = [np.transpose(corr_matrix) for corr_matrix in list_cross_corr]
-                list_neurons_to_transplant_subset, list_neurons_to_remove_subset = identify_interesting_neurons(list_cross_corr_transpose,
-                                                                                                                self_corr_main,
-                                                                                                                self_corr_subset)
+                list_neurons_to_transplant_subset, list_neurons_to_remove_subset, num_swapped_subset = identify_interesting_neurons(
+                    list_cross_corr_transpose,
+                    self_corr_main,
+                    self_corr_subset)
 
             elif crossover == "targeted_crossover_random":
                 list_neurons_to_transplant_main, list_neurons_to_remove_main = match_random_filters(q_values_list, list_cross_corr)
@@ -97,46 +100,65 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
             for layer in range(num_trainable_layer - 1):
                 # transplant offspring one
                 weights_main = transplant_neurons(weights_main, weights_subset_tmp, list_neurons_to_transplant_main,
-                                                           list_neurons_to_remove_main, layer, depth)
+                                                  list_neurons_to_remove_main, layer, depth)
 
                 # transplant offspring two
                 weights_subset = transplant_neurons(weights_subset, weights_main_tmp, list_neurons_to_transplant_subset,
-                                                           list_neurons_to_remove_subset, layer, depth)
+                                                    list_neurons_to_remove_subset, layer, depth)
 
                 depth = (layer + 1) * 6
 
-        print("COMPUTING FOR TRANSPLANTING METHOD")
+        # instantiate new randomly init weights
+        model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])))
+        random_init_weights = model_main.get_weights()
+
+        print("COMPUTING FOR RESETING FILTERS TO RANDOM INIT")
+
+        weight_random_init_filters = copy.deepcopy(weights_main_tmp)
+
+        for index in range(num_trainable_layer - 1):
+            layer = weight_random_init_filters[index * 6]
+            filter_indices = np.array(range(layer.shape[-1]))
+            random_indices = np.random.choice(filter_indices, num_swapped_main[index], replace=False)
+
+            weight_random_init_filters[index * 6][:, :, :, random_indices] = random_init_weights[index * 6][:, :, :, random_indices]
 
         # reset upper layers to random initialization
-        model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])))
-        random_init_weights = model_main.get_weights()[-2:]
-        weights_main[-2:] = random_init_weights
+        weight_random_init_filters[-3:] = random_init_weights[-3:]
+        model_main.set_weights(weight_random_init_filters)
+        model_main.evaluate(data_full[2], data_full[3])
+
+        # train the newly transplanted network
+        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+                       verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+
+        print("COMPUTING FOR TRANSPLANTING METHOD")
+
+        weights_transplant = copy.deepcopy(weights_main)
+
+        # reset upper layers to random initialization
+        weights_transplant[-3:] = random_init_weights[-3:]
 
         # set the weights with the reset last layer
-        model_main.set_weights(weights_main)
-        loss_after_transplant = model_main.evaluate(data_full[2], data_full[3])[0]
-        loss_main.append(loss_after_transplant)
+        model_main.set_weights(weights_transplant)
+        model_main.evaluate(data_full[2], data_full[3])
 
         # train the newly transplanted network
-        model_information_main = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                 verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
 
-        loss_main.append(model_information_main.history["val_loss"])
+        print("COMPUTING FOR BASELINE TRANSFER LEARNING METHOD")
 
-        print("COMPUTING FOR BASELINE METHOD")
+        # weights_main_tmp are the weights before transplant
+        weights_main_tmp[-3:] = random_init_weights[-3:]
 
-        model_main_baseline = keras_model_cnn(work_id, len(np.unique(data_full[1])))
-        weights_main_tmp[-2:] = random_init_weights
-
-        model_main_baseline.set_weights(weights_main_tmp)
-        loss_baseline = model_main.evaluate(data_full[2], data_full[3])[0]
+        model_main.set_weights(weights_main_tmp)
+        model_main.evaluate(data_full[2], data_full[3])
 
         # train the newly transplanted network
-        model_information_baseline = model_main_baseline.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
-                                                verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+                                                             verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
 
-        loss_list.append(loss_main)
-        loss_list.append(loss_subset)
         result_list.append(loss_list)
 
         keras.backend.clear_session()
