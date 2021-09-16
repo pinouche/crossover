@@ -24,6 +24,7 @@ from utils import crossover_method
 
 from neural_models import keras_model_cnn
 from neural_models import keras_vgg
+from neural_models import lr_scheduler
 
 warnings.filterwarnings("ignore")
 
@@ -48,10 +49,10 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
         model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
-                       verbose=2, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
+                       verbose=2, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback, lr_scheduler])
 
         model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
-                         verbose=2, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
+                         verbose=2, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback, lr_scheduler])
 
         for epoch in range(num_transplants):
 
