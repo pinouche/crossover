@@ -19,7 +19,7 @@ def lr_scheduler(epoch, learning_rate=0.1, lr_drop=20):
     return new_lr
 
 
-def keras_model_cnn(seed, output_size):
+def keras_model_cnn(seed, output_size, freeze=False):
 
     num_filters = 64
     input_shape = (32, 32, 3)
@@ -29,21 +29,21 @@ def keras_model_cnn(seed, output_size):
     model = keras.models.Sequential([
 
         keras.layers.Conv2D(num_filters, (5, 5), activation='relu', kernel_initializer=initializer,
-                            padding='same', input_shape=input_shape, trainable=True),
+                            padding='same', input_shape=input_shape, trainable=~freeze),
         keras.layers.BatchNormalization(),
         keras.layers.Conv2D(num_filters, (5, 5), activation='relu', kernel_initializer=initializer,
-                            padding='same', trainable=True),
+                            padding='same', trainable=~freeze),
         keras.layers.BatchNormalization(),
 
         keras.layers.MaxPooling2D(2, 2),
         keras.layers.Dropout(0.2),
 
         keras.layers.Conv2D(num_filters, (5, 5), activation='relu', kernel_initializer=initializer,
-                            padding='same', trainable=True),
+                            padding='same', trainable=~freeze),
         keras.layers.BatchNormalization(),
 
         keras.layers.Conv2D(num_filters, (5, 5), activation='relu', kernel_initializer=initializer,
-                            padding='same', trainable=True),
+                            padding='same', trainable=~freeze),
         keras.layers.BatchNormalization(),
 
         keras.layers.MaxPooling2D(2, 2),

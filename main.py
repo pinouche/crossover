@@ -84,9 +84,7 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
             elif crossover == "targeted_crossover_random":
                 neurons_to_transplant_main, neurons_to_remove_main = match_random_filters(num_swap, list_cross_corr)
-                neurons_to_transplant_subset, neurons_to_remove_subset = match_random_filters(num_swap, list_cross_corr)
-
-            print(neurons_to_remove_main, neurons_to_transplant_main)
+                # neurons_to_transplant_subset, neurons_to_remove_subset = match_random_filters(num_swap, list_cross_corr)
 
             weights_main_tmp = copy.deepcopy(weights_main)
             weights_subset_tmp = copy.deepcopy(weights_subset)
@@ -103,7 +101,7 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
                 depth = (layer + 1) * 6
 
         # instantiate new randomly init weights
-        model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])))
+        model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])), True)
         random_init_weights = model_main.get_weights()
 
         print("COMPUTING FOR RESETING FILTERS TO RANDOM INIT")
