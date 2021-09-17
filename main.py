@@ -70,14 +70,14 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
             # re-order hidden representation
             hidden_representation_subset = [hidden_representation_subset[index][:, :, :, list_ordered_indices_subset[index]] for index in
                                             range(len(list_ordered_indices_subset))]
-
+            
             # proportion of filters to transfer: we set it to the subset class proportion. We can experiment with pareto using variance also, later.
             num_swap = (len(np.unique(data_subset[1])) / (len(np.unique(data_main[1])) + len(np.unique(data_subset[1])))) * list_cross_corr[0].shape[0]
             num_swap = int(num_swap)
 
             if crossover == "targeted_crossover_variance":
-                variance_filters_main = compute_neurons_variance(hidden_representation_main)
-                variance_filters_subset = compute_neurons_variance(hidden_representation_subset)
+                variance_filters_main = compute_neurons_variance(hidden_representation_main, num_conv_layer)
+                variance_filters_subset = compute_neurons_variance(hidden_representation_subset, num_conv_layer)
 
                 neurons_to_remove_main = [np.argsort(variance_filters_main[index])[:num_swap] for index in range(len(variance_filters_main))]
                 neurons_to_transplant_main = [np.argsort(variance_filters_subset[index])[-num_swap:] for index in range(len(variance_filters_subset))]
@@ -85,6 +85,10 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
             elif crossover == "targeted_crossover_random":
                 neurons_to_transplant_main, neurons_to_remove_main = match_random_filters(num_swap, list_cross_corr)
                 # neurons_to_transplant_subset, neurons_to_remove_subset = match_random_filters(num_swap, list_cross_corr)
+            
+            print([hidden_representation_main[index].shape for index in range(len(hidden_representation_main))])
+            print(len(variance_filters_main), len(variance_filters_subset))
+            print(len(neurons_to_remove_main), len(neurons_to_transplant_main))
 
             weights_main_tmp = copy.deepcopy(weights_main)
             weights_subset_tmp = copy.deepcopy(weights_subset)
@@ -170,7 +174,7 @@ def crossover_offspring(data_main, data_subset, data_full, work_id=0):
     np.random.seed(work_id + 1)
 
     # program hyperparameters
-    num_conv_layer = 1
+    num_conv_layer = 4
     batch_size_activation = 512  # batch_size to compute the activation maps
     batch_size_sgd = 64
 

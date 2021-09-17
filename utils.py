@@ -25,10 +25,10 @@ def get_hidden_layers(model, data_x, batch_size):
     return hidden_layers_list
 
 
-def compute_neurons_variance(hidden_layers_list):
+def compute_neurons_variance(hidden_layers_list, num_conv_layer):
     list_variance_filters = []
     
-    for layer_id in range(len(hidden_layers_list) - 2):
+    for layer_id in range(num_conv_layer):
 
         batch_size = hidden_layers_list[layer_id].shape[0]
         size_activation_map = hidden_layers_list[layer_id].shape[1]
