@@ -29,13 +29,12 @@ warnings.filterwarnings("ignore")
 
 def transplant_crossover(crossover, data_main, data_subset, data_full, num_transplants=1, num_conv_layer=5, batch_size_activation=512,
                          batch_size_sgd=128, work_id=0):
-    result_list = []
+    dic_results = dict()
     print("crossover method: " + crossover)
     for safety_level in ["safe_crossover", "naive_crossover"]:
         print(safety_level)
 
         num_classes_main, num_classes_subset = len(np.unique(data_main[1])), len(np.unique(data_subset[1]))
-        loss_list = []
 
         model_main = keras_model_cnn(work_id, num_classes_main)
         model_subset = keras_model_cnn(work_id + 1000, num_classes_subset)
@@ -85,10 +84,6 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
             elif crossover == "targeted_crossover_random":
                 neurons_to_transplant_main, neurons_to_remove_main = match_random_filters(num_swap, list_cross_corr)
                 # neurons_to_transplant_subset, neurons_to_remove_subset = match_random_filters(num_swap, list_cross_corr)
-            
-            print([hidden_representation_main[index].shape for index in range(len(hidden_representation_main))])
-            print(len(variance_filters_main), len(variance_filters_subset))
-            print(len(neurons_to_remove_main), len(neurons_to_transplant_main))
 
             weights_main_tmp = copy.deepcopy(weights_main)
             weights_subset_tmp = copy.deepcopy(weights_subset)
@@ -122,11 +117,16 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         # reset upper layers to random initialization
         weight_random_init_filters[-3:] = random_init_weights[-3:]
         model_main.set_weights(weight_random_init_filters)
-        model_main.evaluate(data_full[2], data_full[3])
+
+        random_reset_zero_epoch_loss = model_main.evaluate(data_full[2], data_full[3])
 
         # train the newly transplanted network
-        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+        info_random_reset = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                        verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+
+        random_reset_loss = info_random_reset.history["val_loss"]
+        random_reset_loss.insert(0, random_reset_zero_epoch_loss)
+        dic_results["random_reset_method"] = random_reset_loss
 
         print("COMPUTING FOR TRANSPLANTING METHOD")
 
@@ -137,11 +137,15 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
         # set the weights with the reset last layer
         model_main.set_weights(weights_transplant)
-        model_main.evaluate(data_full[2], data_full[3])
+        transplanting_method_zero_epoch_loss = model_main.evaluate(data_full[2], data_full[3])
 
         # train the newly transplanted network
-        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+        info_transplant_loss = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                 verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+
+        transplant_loss = info_transplant_loss.history["val_loss"]
+        transplant_loss.insert(0, transplanting_method_zero_epoch_loss)
+        dic_results["transplant_method"] = transplant_loss
 
         print("COMPUTING FOR BASELINE TRANSFER LEARNING METHOD")
 
@@ -149,25 +153,31 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         weights_main_tmp[-3:] = random_init_weights[-3:]
 
         model_main.set_weights(weights_main_tmp)
-        model_main.evaluate(data_full[2], data_full[3])
+        baseline_transfer_learning_zero_epoch_loss = model_main.evaluate(data_full[2], data_full[3])
 
         # train the newly transplanted network
-        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+        info_baseline_transfer = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                              verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+
+        baseline_transfer_loss = info_baseline_transfer.history["val_loss"]
+        baseline_transfer_loss.insert(0, baseline_transfer_learning_zero_epoch_loss)
+        dic_results["baseline_transfer_method"] = baseline_transfer_loss
         
         print("COMPUTING ON FULL DATASET FROM SCRATCH")
 
         model_main.set_weights(random_init_weights)
-        model_main.evaluate(data_full[2], data_full[3])
+        training_from_scratch_zero_epoch_loss = model_main.evaluate(data_full[2], data_full[3])
         
-        model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
+        info_scratch_training = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                              verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
 
-        result_list.append(loss_list)
+        scratch_training_loss = info_scratch_training.history["val_loss"]
+        scratch_training_loss.insert(0, training_from_scratch_zero_epoch_loss)
+        dic_results["scratch_training_method"] = scratch_training_loss
 
         keras.backend.clear_session()
 
-    return result_list
+    return dic_results
 
 
 def crossover_offspring(data_main, data_subset, data_full, work_id=0):
@@ -220,7 +230,7 @@ if __name__ == "__main__":
         results = crossover_offspring(data_main, data_subset, data_full, run)
         list_results.append(results)
 
-    pickle.dump(results, open("crossover_results.pickle", "wb"))
+    pickle.dump(list_results, open("crossover_results.pickle", "wb"))
 
     end = timer()
     print(end - start)
