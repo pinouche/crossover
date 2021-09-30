@@ -12,7 +12,7 @@ import keras
 from load_data import load_cifar
 from load_data import load_mnist
 from load_data import load_cifar_100
-from load_data import subset_classes
+from load_data import add_negative_class_examples
 from load_data import shift_labels
 
 from utils import transplant_neurons
@@ -100,7 +100,7 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
                 depth = (layer + 1) * 6
 
         # instantiate new randomly init weights
-        model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])), True)
+        model_main = keras_model_cnn(work_id, len(np.unique(data_full[1])), 0.0001)
         random_init_weights = model_main.get_weights()
 
         print("COMPUTING FOR RESETING FILTERS TO RANDOM INIT")
@@ -108,11 +108,12 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         weight_random_init_filters = copy.deepcopy(weights_main_tmp)
 
         for index in range(num_conv_layer):
-            layer = weight_random_init_filters[index * 6]
-            filter_indices = np.array(range(layer.shape[-1]))
-            random_indices = np.random.choice(filter_indices, num_swap, replace=False)
+            # layer = weight_random_init_filters[index * 6]
+            # filter_indices = np.array(range(layer.shape[-1]))
+            # indices = np.random.choice(filter_indices, num_swap, replace=False)
 
-            weight_random_init_filters[index * 6][:, :, :, random_indices] = random_init_weights[index * 6][:, :, :, random_indices]
+            indices = neurons_to_remove_main[index]
+            weight_random_init_filters[index * 6][:, :, :, indices] = random_init_weights[index * 6][:, :, :, indices]
 
         # reset upper layers to random initialization
         weight_random_init_filters[-3:] = random_init_weights[-3:]
@@ -203,9 +204,6 @@ if __name__ == "__main__":
     data = "cifar100"
     num_runs = 1
 
-    # specify the classes that are to be trained seperately
-    classes_in_subset = [0, 1]
-
     if data == "cifar10":
         x_train, x_test, y_train, y_test = load_cifar()
     elif data == "cifar100":
@@ -213,14 +211,22 @@ if __name__ == "__main__":
     else:
         x_train, x_test, y_train, y_test = load_mnist()
 
-    mask_train, mask_test = subset_classes(y_train, y_test, classes_in_subset)
+    # specify the classes that are to be trained separately
+    class_subset_list = [0]
+
+    mask_train = np.array([value in class_subset_list for value in y_train])
+    mask_test = np.array([value in class_subset_list for value in y_test])
+
+    data_main = [x_train[~mask_train], y_train[~mask_train], x_test[~mask_test], y_test[~mask_test]]
+    data_subset = [x_train[mask_train], y_train[mask_train], x_test[mask_test], y_test[mask_test]]
+
+    data_subset = add_negative_class_examples(copy.deepcopy(data_main), copy.deepcopy(data_subset), class_subset_list, True)
+    data_subset = add_negative_class_examples(copy.deepcopy(data_main), copy.deepcopy(data_subset), class_subset_list, False)
 
     # make the label start from 0 and increment by 1 to train tf model
-    y_train_main, y_test_main = shift_labels(y_train[~mask_train], y_test[~mask_test])
-    y_train_subset, y_test_subset = shift_labels(y_train[mask_train], y_test[mask_test])
+    data_main[1], data_main[3] = shift_labels(data_main[1], data_main[3])
+    data_subset[1], data_subset[3] = shift_labels(data_subset[1], data_subset[3])
 
-    data_main = (x_train[~mask_train], y_train_main, x_test[~mask_test], y_test_main)
-    data_subset = (x_train[mask_train], y_train_subset, x_test[mask_test], y_test_subset)
     data_full = x_train, y_train, x_test, y_test
 
     start = timer()

@@ -19,7 +19,7 @@ def lr_scheduler(epoch, learning_rate=0.1, lr_drop=20):
     return new_lr
 
 
-def keras_model_cnn(seed, output_size, freeze=False):
+def keras_model_cnn(seed, output_size, lr=0.001, freeze=False):
 
     num_filters = 64
     input_shape = (32, 32, 3)
@@ -61,7 +61,7 @@ def keras_model_cnn(seed, output_size, freeze=False):
         keras.layers.Activation(keras.activations.softmax)
     ])
 
-    optimizer = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, amsgrad=False)
+    optimizer = keras.optimizers.Adam(lr=lr, beta_1=0.9, beta_2=0.999, amsgrad=False)
     model.compile(optimizer=optimizer, loss='sparse_categorical_crossentropy',
                   metrics=['accuracy', 'sparse_categorical_crossentropy'])
 

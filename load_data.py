@@ -31,17 +31,22 @@ def load_cifar():
     return x_train, x_test, y_train, y_test
 
 
-def subset_classes(y_train, y_test, class_subset_list=[]):
+def add_negative_class_examples(data_main, data_subset, list_classes, train_data=True):
+    index1, index2 = 0, 1
+    if not train_data:
+        index1, index2 = 2, 3
 
-    if len(class_subset_list) != 0:
-        mask_train = [value in class_subset_list for value in y_train]
-        mask_test = [value in class_subset_list for value in y_test]
+    num_instances_main = data_main[index1].shape[0]
+    num_instances_subset = data_subset[index1].shape[0]
 
-    else:
-        mask_train = [True] * y_train.shape[0]
-        mask_test = [True] * y_test.shape[0]
+    indices = np.array(range(num_instances_main))
+    chosen_indices = np.random.choice(indices, num_instances_subset, replace=False)
 
-    return np.array(mask_train), np.array(mask_test)
+    data_subset[index1] = np.concatenate([data_subset[index1], data_main[index1][chosen_indices]])
+    data_subset[index2] = np.concatenate([data_subset[index2], data_main[index2][chosen_indices]])
+    data_subset[index2][[v not in list_classes for v in data_subset[index2]]] = 1
+
+    return data_subset
 
 
 def shift_labels(label_train, label_test):
