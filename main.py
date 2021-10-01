@@ -6,7 +6,6 @@ import copy
 
 import tensorflow as tf
 
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 import keras
 
 from load_data import load_cifar
@@ -200,9 +199,15 @@ def crossover_offspring(data_main, data_subset, data_full, work_id=0):
 
 
 if __name__ == "__main__":
+    
+    physical_devices = tf.config.list_physical_devices('GPU')
+    print(physical_devices)
+    
+    for gpu_device in physical_devices:
+        tf.config.experimental.set_memory_growth(gpu_device, True)
 
     data = "cifar100"
-    num_runs = 1
+    num_runs = 10
 
     if data == "cifar10":
         x_train, x_test, y_train, y_test = load_cifar()
