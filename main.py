@@ -30,7 +30,7 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
                          batch_size_sgd=128, work_id=0):
     dic_results = dict()
     print("crossover method: " + crossover)
-    for safety_level in ["safe_crossover", "naive_crossover"]:
+    for safety_level in ["safe_crossover"]:
         print(safety_level)
 
         num_classes_main, num_classes_subset = len(np.unique(data_main[1])), len(np.unique(data_subset[1]))
@@ -40,10 +40,10 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
 
         early_stop_callback = keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
 
-        model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=2,
+        model_main.fit(data_main[0], data_main[1], batch_size=batch_size_sgd, epochs=50,
                        verbose=0, validation_data=(data_main[2], data_main[3]), callbacks=[early_stop_callback])
 
-        model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=2,
+        model_subset.fit(data_subset[0], data_subset[1], batch_size=batch_size_sgd, epochs=50,
                          verbose=0, validation_data=(data_subset[2], data_subset[3]), callbacks=[early_stop_callback])
 
         for epoch in range(num_transplants):
@@ -123,6 +123,11 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         # train the newly transplanted network
         info_random_reset = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                        verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+        
+        preds = model_main.predict(data_full[2][np.squeeze(data_full[3] == 0)])
+        preds = np.argmax(preds, axis=1)
+        acc = np.sum(preds == 0)/preds.shape[0]
+        print(f"The accuracy on transplanted class is: {acc}")
 
         random_reset_loss = info_random_reset.history["val_loss"]
         random_reset_loss.insert(0, random_reset_zero_epoch_loss)
@@ -142,6 +147,11 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         # train the newly transplanted network
         info_transplant_loss = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                 verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+        
+        preds = model_main.predict(data_full[2][np.squeeze(data_full[3] == 0)])
+        preds = np.argmax(preds, axis=1)
+        acc = np.sum(preds == 0)/preds.shape[0]
+        print(f"The accuracy on transplanted class is: {acc}")
 
         transplant_loss = info_transplant_loss.history["val_loss"]
         transplant_loss.insert(0, transplanting_method_zero_epoch_loss)
@@ -158,6 +168,11 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         # train the newly transplanted network
         info_baseline_transfer = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                              verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+        
+        preds = model_main.predict(data_full[2][np.squeeze(data_full[3] == 0)])
+        preds = np.argmax(preds, axis=1)
+        acc = np.sum(preds == 0)/preds.shape[0]
+        print(f"The accuracy on transplanted class is: {acc}")
 
         baseline_transfer_loss = info_baseline_transfer.history["val_loss"]
         baseline_transfer_loss.insert(0, baseline_transfer_learning_zero_epoch_loss)
@@ -170,6 +185,11 @@ def transplant_crossover(crossover, data_main, data_subset, data_full, num_trans
         
         info_scratch_training = model_main.fit(data_full[0], data_full[1], batch_size=batch_size_sgd, epochs=50,
                                                              verbose=2, validation_data=(data_full[2], data_full[3]), callbacks=[early_stop_callback])
+
+        preds = model_main.predict(data_full[2][np.squeeze(data_full[3] == 0)])
+        preds = np.argmax(preds, axis=1)
+        acc = np.sum(preds == 0)/preds.shape[0]
+        print(f"The accuracy on transplanted class is: {acc}")
 
         scratch_training_loss = info_scratch_training.history["val_loss"]
         scratch_training_loss.insert(0, training_from_scratch_zero_epoch_loss)
@@ -203,8 +223,10 @@ if __name__ == "__main__":
     physical_devices = tf.config.list_physical_devices('GPU')
     print(physical_devices)
     
+    gpu_num = 0
     for gpu_device in physical_devices:
-        tf.config.experimental.set_memory_growth(gpu_device, True)
+        if gpu_num == 0:
+            tf.config.experimental.set_memory_growth(gpu_device, True)
 
     data = "cifar100"
     num_runs = 10
