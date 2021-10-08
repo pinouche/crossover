@@ -231,3 +231,38 @@ def compute_pareto(data):
 
     return np.array(sorted_data), pareto_idx
 
+
+def align_neurons(weights_main, weights_subset, model_main, model_subset, x_test, batch_size_activation, num_conv_layer, num_swap, safety_level,
+                  crossover="targeted_crossover_variance"):
+
+    # compute the cross correlation matrix
+    hidden_representation_main = get_hidden_layers(model_main, x_test, batch_size_activation)
+    hidden_representation_subset = get_hidden_layers(model_subset, x_test, batch_size_activation)
+
+    list_cross_corr = get_corr_cnn_filters(hidden_representation_main, hidden_representation_subset)
+
+    # functionally align the networks
+    list_ordered_indices_main, list_ordered_indices_subset, weights_main, weights_subset = crossover_method(
+        weights_main, weights_subset, list_cross_corr, safety_level)
+
+    # re-order the correlation matrices
+    list_cross_corr = [list_cross_corr[index][:, list_ordered_indices_subset[index]] for index in
+                       range(len(list_ordered_indices_subset))]
+
+    # re-order hidden representation
+    hidden_representation_subset = [hidden_representation_subset[index][:, :, :, list_ordered_indices_subset[index]] for index in
+                                    range(len(list_ordered_indices_subset))]
+
+    if crossover == "targeted_crossover_variance":
+        variance_filters_main = compute_neurons_variance(hidden_representation_main, num_conv_layer)
+        variance_filters_subset = compute_neurons_variance(hidden_representation_subset, num_conv_layer)
+
+        neurons_to_remove_main = [np.argsort(variance_filters_main[index])[:num_swap] for index in range(len(variance_filters_main))]
+        neurons_to_transplant_main = [np.argsort(variance_filters_subset[index])[-num_swap:] for index in
+                                      range(len(variance_filters_subset))]
+
+    elif crossover == "targeted_crossover_random":
+        neurons_to_transplant_main, neurons_to_remove_main = match_random_filters(num_swap, list_cross_corr)
+        # neurons_to_transplant_subset, neurons_to_remove_subset = match_random_filters(num_swap, list_cross_corr)
+
+    return weights_main, weights_subset, neurons_to_remove_main, neurons_to_transplant_main
